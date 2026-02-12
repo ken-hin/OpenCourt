@@ -1,11 +1,6 @@
-# 🏀 CBB Analytics Project Schedule
+# OpenCourt Project Schedule
 
-**Duration:** Feb 12 - Apr 10, 2026 (8 weeks)
-**Final Due:** April 10, 2026
-
----
-
-## 📅 Timeline
+## Timeline
 
 ```
 Week 1 (Feb 12-18): Setup & Planning
@@ -21,7 +16,7 @@ Apr 10: SUBMISSION
 
 ---
 
-## 🗓️ Weekly Tasks
+## Weekly Tasks
 
 ### Week 1: Setup (Feb 12-18)
 **Goals:** Project structure, team roles, basic models
@@ -68,7 +63,7 @@ Apr 10: SUBMISSION
 
 ---
 
-### Week 4: Charts & Analytics (Mar 5-11) 🎯 MVP
+### Week 4: Charts & Analytics (Mar 5-11)
 **Goals:** Visualizations + key analytics
 
 **Tasks:**
@@ -115,7 +110,7 @@ Apr 10: SUBMISSION
 
 ---
 
-### Week 7: Deployment (Mar 26-Apr 1) 🚀
+### Week 7: Deployment (Mar 26-Apr 1)
 **Goals:** Go live!
 
 **Tasks:**
@@ -147,7 +142,7 @@ Apr 10: SUBMISSION
 
 ---
 
-### Apr 10: SUBMISSION 🎯
+### Apr 10: SUBMISSION
 - [ ] Final production check
 - [ ] Submit materials
 - [ ] Deliver presentation
@@ -155,7 +150,7 @@ Apr 10: SUBMISSION
 
 ---
 
-## 👥 Team Roles
+## Team Roles
 
 **Backend:** Models, database, view logic
 **Frontend:** HTML/CSS, UI components, design
@@ -164,7 +159,7 @@ Apr 10: SUBMISSION
 
 ---
 
-## ✅ Key Milestones
+## Key Milestones
 
 - **Week 4:** MVP complete (can demo full app)
 - **Week 7:** Production deployment (app is live)
@@ -172,7 +167,7 @@ Apr 10: SUBMISSION
 
 ---
 
-## 📅 Key Dates
+## Key Dates
 
 - Feb 18: Week 1 done
 - Feb 25: Data syncing works
@@ -182,7 +177,7 @@ Apr 10: SUBMISSION
 
 ---
 
-## ⚠️ Contingency Plans
+## Contingency Plans
 
 **If behind:**
 - Cut Week 5 features
