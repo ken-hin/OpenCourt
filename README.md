@@ -225,6 +225,30 @@ This only needs to be done once after cloning. If it still fails, confirm Node.j
 
 ---
 
+**`tailwind install` fails with "node.js and/or npm is not installed or cannot be found"**
+
+Node.js is installed but npm isn't on the PATH that Django can see. First, find where npm actually lives:
+
+```bash
+# macOS / Linux
+which npm
+
+# Windows
+where npm
+```
+
+Then add the result to your `.env` file (copy from `.env.example` if you haven't already):
+
+```
+NPM_BIN_PATH=/opt/homebrew/bin/npm
+```
+
+Common paths: `/usr/local/bin/npm` (macOS Intel) · `/opt/homebrew/bin/npm` (macOS Apple Silicon) · `C:\Program Files\nodejs\npm.cmd` (Windows)
+
+After saving `.env`, retry `python manage.py tailwind install`.
+
+---
+
 **`uv run python manage.py ...` fails with "No module named django"**
 
 The Python virtual environment needs to be set up. Run:
