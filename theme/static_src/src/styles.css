@@ -1,0 +1,36 @@
+/*
+ * styles.css — Tailwind CSS v4 source file.
+ *
+ * This is the entry point for all CSS. Tailwind v4 compiles this file into
+ * theme/static/css/dist/styles.css, which is what the browser loads.
+ *
+ * To compile during development (auto-reloads on save):
+ *   python manage.py tailwind start
+ *
+ * To compile for production (minified):
+ *   python manage.py tailwind build
+ *
+ * Adding styles:
+ *   - Prefer Tailwind utility classes directly in HTML templates.
+ *   - Use DaisyUI component classes (btn, card, navbar, etc.) for UI elements.
+ *   - Add custom styles in static/css/main.css, not here.
+ *
+ * DaisyUI theme: change 'light' to any DaisyUI theme name.
+ * Full theme list: https://daisyui.com/docs/themes/
+ */
+
+@import "tailwindcss";
+
+/* DaisyUI v5 plugin — provides all component classes */
+@plugin "daisyui" {
+    themes: dim --default;
+}
+
+/*
+ * Tell Tailwind where to scan for class names in Django templates.
+ * Without these, utility classes used in templates won't be included
+ * in the compiled CSS output.
+ */
+@source "../../../templates/**/*.html";
+@source "../../../opencourt/templates/**/*.html";
+@source "../../../static/**/*.js";

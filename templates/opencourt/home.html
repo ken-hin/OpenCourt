@@ -1,0 +1,27 @@
+{# home.html — Home page for OpenCourt.                                              #}
+{# Extends base.html. Currently displays the site name centered on screen with a    #}
+{# fade-in animation. Replace the content block here as the UI is built out.        #}
+{# To add page-specific styles, use {% block extra_css %}; for scripts, extra_js.   #}
+
+{% extends 'base.html' %}
+
+{% block title %}OpenCourt{% endblock %}
+
+{% block extra_css %}
+<style>
+    @keyframes fade-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+
+    .fade-in {
+        animation: fade-in 1.75s ease forwards;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-center min-h-screen">
+    <h1 class="text-7xl font-bold fade-in">OpenCourt</h1>
+</div>
+{% endblock %}
