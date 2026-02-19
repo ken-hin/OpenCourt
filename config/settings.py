@@ -7,7 +7,15 @@
 # Before deploying to production, move secrets to environment variables and
 # set DEBUG = False. See: https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
+import os
 from pathlib import Path
+
+# Load environment variables from .env file (if it exists).
+# This lets us read SECRET_KEY, DEBUG, NPM_BIN_PATH, etc. from .env
+# without hardcoding them here. Requires: uv add python-dotenv
+# Copy .env.example to .env and fill in your values — see README for setup.
+from dotenv import load_dotenv
+load_dotenv()
 
 # BASE_DIR points to the project root (the repo folder).
 # Use it to build absolute paths, e.g. BASE_DIR / 'templates'.
@@ -48,6 +56,15 @@ INSTALLED_APPS = [
 # Run `python manage.py tailwind install` once after cloning to install npm deps.
 # Run `python manage.py tailwind start` in a second terminal while developing.
 TAILWIND_APP_NAME = 'theme'
+
+# Path to the npm executable on your machine. Defaults to 'npm', which works if
+# npm is on your system PATH. If you get a "node.js and/or npm is not installed"
+# error, find your npm path with `which npm` (Mac/Linux) or `where npm` (Windows)
+# and set NPM_BIN_PATH in your local .env file. Never hardcode a path here since
+# it differs per machine.
+# Common macOS paths: /usr/local/bin/npm (Intel) or /opt/homebrew/bin/npm (Apple Silicon)
+# Common Windows path: C:\Program Files\nodejs\npm.cmd
+NPM_BIN_PATH = os.environ.get('NPM_BIN_PATH', 'npm')
 
 # Required by django-browser-reload to inject the live-reload script only in
 # local dev. INTERNAL_IPS limits this to requests from your own machine.
