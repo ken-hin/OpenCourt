@@ -67,6 +67,11 @@ static_root/
 # Each teammate regenerates them with: python manage.py tailwind install
 node_modules/
 
+# npm lockfile — regenerated on every `tailwind install` and differs across npm
+# versions and operating systems, causing noisy diffs with no real benefit for
+# this project. package.json already pins version ranges for Tailwind and DaisyUI.
+package-lock.json
+
 # NOTE: theme/static/css/dist/styles.css (the compiled Tailwind output) is
 # intentionally NOT listed here, so it IS committed to the repo.
 # This means the site renders correctly even before a teammate runs `tailwind start`.
