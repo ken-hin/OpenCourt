@@ -1,0 +1,35 @@
+/*
+ * main.css — Custom styles for OpenCourt.
+ *
+ * Use this file for styles that Tailwind utilities and DaisyUI components
+ * don't cover on their own. Loaded after DaisyUI and Tailwind, so anything
+ * written here will override framework defaults if needed.
+ *
+ * Guidelines:
+ *   - Reach for Tailwind utility classes in HTML first before adding CSS here.
+ *   - Use DaisyUI component classes (btn, card, navbar, etc.) for UI elements.
+ *   - Reserve this file for truly custom styles: brand colors, custom animations,
+ *     chart container sizing, and any one-off overrides.
+ *
+ * DaisyUI component reference : https://daisyui.com/components/
+ * Tailwind class reference     : https://tailwindcss.com/docs/utility-first
+ */
+
+
+/* === Brand / Global === */
+/* Add site-wide custom styles here */
+
+
+/* === Layout === */
+/* Add custom layout styles here */
+
+
+/* === Charts (ApexCharts) === */
+/*
+ * Give chart containers a consistent height.
+ * In your template: <div class="chart-container" id="my-chart"></div>
+ * Then initialize the chart in a script block targeting #my-chart.
+ */
+.chart-container {
+    min-height: 300px;
+}

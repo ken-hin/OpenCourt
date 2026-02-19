@@ -1,0 +1,71 @@
+<!--
+    base.html — The shared base template for all pages in OpenCourt.
+
+    Every page template should start with { % extends 'base.html' %} and then
+    override the blocks below to inject page-specific content.
+
+    Available blocks:
+      { % block title %}     — sets the browser tab title
+      { % block extra_css %} — add page-specific stylesheets in the <head>
+      { % block content %}   — the main page body goes here
+      { % block extra_js %}  — add page-specific scripts before </body>
+
+    Frontend libraries:
+      - Tailwind CSS + DaisyUI : compiled locally via `python manage.py tailwind start`
+                                  output: theme/static/css/dist/styles.css
+      - ApexCharts             : loaded via CDN (no npm integration needed)
+
+    To change the DaisyUI color theme, edit theme/static_src/src/styles.css
+    and change the theme name in the @plugin block (default: "light").
+    Full theme list: https://daisyui.com/docs/themes/
+-->
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}OpenCourt{% endblock %}</title>
+    {% load static %}
+
+    <!--
+        Tailwind CSS + DaisyUI — compiled from theme/static_src/src/styles.css
+        by the Tailwind CLI. Run `python manage.py tailwind start` in a second
+        terminal while developing to keep this file auto-updated on save.
+        Run `python manage.py tailwind build` to produce a minified production build.
+    -->
+    <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
+
+    <!-- Custom styles — for anything Tailwind and DaisyUI don't cover -->
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+    <nav>
+        <!-- Navigation will be built here -->
+    </nav>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <!-- Footer will be built here -->
+    </footer>
+
+    <!--
+        ApexCharts — interactive chart library used for all data visualizations.
+        To render a chart, target a <div id="chart"> in your template and initialize
+        it in a page-specific script block. Loaded globally since most pages will
+        display stats. Full docs: https://apexcharts.com/docs/installation/
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <!-- Global JS — utility functions shared across all pages -->
+    <script src="{% static 'js/main.js' %}"></script>
+
+    {% block extra_js %}{% endblock %}
+
+</body>
+</html>
