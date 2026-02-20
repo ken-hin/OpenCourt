@@ -12,3 +12,7 @@ class HomeView(TemplateView):
     template_name = 'opencourt/home.html'
 
 # Additional views will be defined here (e.g. TeamDetailView, ConferenceView)
+
+class AboutView(TemplateView):
+    """Renders the about page."""
+    template_name = 'opencourt/about.html'

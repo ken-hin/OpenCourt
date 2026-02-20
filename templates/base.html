@@ -42,8 +42,15 @@
 </head>
 <body>
 
-    <nav>
+    <nav class="navbar bg-base-100 shadow px-6">
         <!-- Navigation will be built here -->
+        <div class="flex-1">
+            <a href="/" class="text-xl font-bold">OpenCourt</a>
+        </div>
+        <div class="flex gap-4">
+            <a href="{% url 'opencourt:home' %}" class="hover:text-primary">Home</a>
+            <a href="{% url 'opencourt:about' %}" class="hover:text-primary">About</a>
+        </div>
     </nav>
 
     <main>
