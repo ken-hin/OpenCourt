@@ -65,14 +65,14 @@ Project Proposal Outline
     - Deadlines:  
       - Proposal due: \~2/17  
       - Proposal Revision: \~2/24  
-      - Min viable and status report 1: \~3/10  
-      - Improve and status report 2: \~3/24  
-      - Testing and refine report 3: \~4/10  
+      - Basic UI development and integration of data: \~3/10  
+      - Statistical analytics and potential ML model: \~3/24  
+      - Testing of key features and final clean-up: \~4/10  
       - Complete project, report, and presentation: \~4/14  
   - Constraints   
-    - Ethical: people using our data for personal financial decisions   
-    - Legal: NO  
+    - Ethical: Statistics and predictions implemented in the application may potentially encourage people to partake in sports betting.  
+    - Legal: If data is acquired using data scraping techniques, we may need explicit consent from select websites, such as EvanMiya, to scrape data from. Some API's also have terms that will need to be explicity followed.
   - Resources   
     - API and scraping should allow us to collect the amount of good data we need to begin analysis and data display   
   - Descoping   
-    - If we aren't able to reach all of our goals, such as prediction and analysis, a basic website that displays data and has a good user experience will still allow us to reach some of the goals we set out to achieve 
+    - If we aren't able to reach all of our goals, such as prediction and analysis, a basic website that displays data and has a good user experience will still allow us to reach some of the goals we set out to achieve. We believe there is still some customer demand for a easy-to-use website featuring some analytical tools and data on college basketball teams and players.
