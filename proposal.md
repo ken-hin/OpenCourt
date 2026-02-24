@@ -24,7 +24,10 @@ Project Proposal Outline
   - How is it different?   
     - We won’t lock everything behind paywalls. We want to make our analysis and projections public so casual sports fans can view them.  
   - What are the backgrounds of the team members?   
-    - Some of the team members' backgrounds include web-development, web scraping, machine learning, statistics, and general software development.  
+    - Kenneth: CFB dashboard in Django
+    - Alex: Professional web dev experience
+    - Jackson: ML models and web scraping
+    - Samuel: ML/deep learning, Chrome extension.
   - Is there anything you’d like to include to orient the reader?  
     - Assuming we are making a website to show the statistics, we would want the site to correctly guide the user without any need of a tutorial. An optional one may be provided.  
 - Section 2: Customer Value  
