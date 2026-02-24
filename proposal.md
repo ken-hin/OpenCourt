@@ -29,7 +29,7 @@ Project Proposal Outline
     - Assuming we are making a website to show the statistics, we would want the site to correctly guide the user without any need of a tutorial. An optional one may be provided.  
 - Section 2: Customer Value  
   - Customer Need  
-    - Free access to sports analytics and prediction models   
+    - Our target audience is a college basketball fan (ages 18-35) who engages in bracket              contests (such as March Madness), follows discussions of advanced statistics on the              internet, and is hungry for more information without having to pay for a subscription to         advanced analytics tools. College basketball fans who are casual or semi-serious fans do         not have access to advanced efficiency statistics and forecasting tools because the best         tools available are behind paywalls. They are forced to rely on basic statistics (such as        points per game, winning percentage) that do not accurately measure a team's quality. 
   - Proposed Solution  
     - Our solution will provide a user-friendly experience for users who are searching for up-to-date statistics on college basketball teams.  
   - Measures of Success  
