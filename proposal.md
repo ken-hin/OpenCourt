@@ -41,40 +41,24 @@ Project Proposal Outline
 - Section 3: Proposed Solution & Technology  
   - System: technology you deliver  
     - Basic web application that displays CBB stats/data and provides analysis based on a predictive model
-┌───────────────────────────┐
-│   External CBBData API    │
-└──────────────┬────────────┘
-               ↓
-┌───────────────────────────┐
-│      Django Backend       │
-└──────────────┬────────────┘
-               ↓
-┌───────────────────────────┐
-│   Data Processing Layer   │
-│  - Cleaning               │
-│  - Feature Engineering    │
-│  - Predictive Model       │
-└──────────────┬────────────┘
-               ↓
-┌───────────────────────────┐
-│      SQLite Database      │
-└──────────────┬────────────┘
-               ↓
-┌───────────────────────────┐
-│       REST Endpoints      │
-└──────────────┬────────────┘
-               ↓
-┌───────────────────────────┐
-│ Frontend (Tailwind UI)    │
-└──────────────┬────────────┘
-               ↓
-┌───────────────────────────┐
-│ ApexCharts Visualizations │
-└──────────────┬────────────┘
-               ↓
-┌───────────────────────────┐
-│           User            │
-└───────────────────────────┘
+External CBBData API
+        ↓
+Django Backend
+        ↓
+Data Processing Layer
+  • Cleaning
+  • Feature Engineering
+  • Predictive Model
+        ↓
+SQLite Database
+        ↓
+REST Endpoints
+        ↓
+Frontend (HTML + Tailwind + DaisyUI)
+        ↓
+ApexCharts
+        ↓
+User
   - Tools: technology you use to build what you deliver   
     - We will probably use web-development tools such as HTML for the webpage and python for the statistics and predictive models.  
     - Python 3.11+ & Libraries  
