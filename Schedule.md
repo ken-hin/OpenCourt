@@ -27,85 +27,88 @@
 ## Sprint Overview
 
 ```
-Sprint 1 │ Feb 12 – Feb 25 │ Weeks 1-2 │ Foundation & Data Pipeline
-Sprint 2 │ Feb 26 – Mar 11 │ Weeks 3-4 │ Core Pages & MVP          ← Status Report 1
-Sprint 3 │ Mar 12 – Mar 25 │ Weeks 5-6 │ Advanced Features & Polish ← Status Report 2
-Sprint 4 │ Mar 26 – Apr 9  │ Weeks 7-8 │ Deployment & Final Polish  ← Status Report 3
-Final    │ Apr 10 – Apr 14 │           │ Presentation & Submission
+Sprint 1 │ Feb 3  – Feb 18 │ Project Proposal                          ← Proposal due ~Feb 17
+Sprint 2 │ Feb 18 – Mar 4  │ Proposal Revision + Foundation & Pipeline  ← Revision due ~Feb 24
+Sprint 3 │ Mar 5  – Mar 17 │ Core Pages & MVP                          ← Status Report 1 ~Mar 10
+Sprint 4 │ Mar 18 – Mar 31 │ Advanced Features & Analytics             ← Status Report 2 ~Mar 24
+Sprint 5 │ Apr 1  – Apr 10 │ Deployment, Testing & Final Polish        ← Status Report 3 ~Apr 10
+Sprint 6 │ Apr 10 – Apr 14 │ Presentation & Submission
 ```
 
 ---
 
-## Sprint 1: Foundation & Data Pipeline (Feb 12 – Feb 25)
+## Sprint 1: Project Proposal (Feb 3 – Feb 18) ✓ COMPLETE
 
-**Sprint Goal:** Project is scaffolded, running locally for all teammates, and pulling real CBB data into the database.
+**Sprint Goal:** Submit a complete project proposal covering customer value, technology, team roles, and schedule.
 
-**Sprint Deliverable:** Live dev server showing team list page populated with real API data.
-
----
-
-### Week 1: Setup & Scaffolding (Feb 12–18) ✓ COMPLETE
-
-**Goals:** Django project structure, Tailwind/DaisyUI integration, git workflow established.
+**Sprint Deliverable:** Approved proposal.md submitted to the class.
 
 | Person | Tasks |
 |--------|-------|
-| **Kenneth** | Django project scaffolding, `config/` + `opencourt/` app setup, Tailwind v4 + DaisyUI v5 integration, base template, home page, README, .gitignore, .env.example |
-| **All** | Clone repo, run `uv sync`, `tailwind install`, confirm dev server works locally |
+| **Kenneth** | Project scaffolding, `config/` + `opencourt/` app setup, Tailwind v4 + DaisyUI v5 integration, base template, home page, README, .gitignore, .env.example ✓ |
+| **All** | Collaborate on proposal sections; clone repo, run `uv sync`, `tailwind install`, confirm dev server works locally ✓ |
 
-**Milestone:** Everyone can run the dev server and see the home page. ✓
+> **📋 Proposal due ~Feb 17** ✓
 
 ---
 
-### Week 2: Models & Data Pipeline (Feb 19–25)
+## Sprint 2: Proposal Revision + Foundation & Data Pipeline (Feb 18 – Mar 4)
 
-**Goals:** Core database models defined, CBB API connected, real team data syncing into the database.
+**Sprint Goal:** Address all grader feedback on the proposal, get all teammates' environments working, and have the app connected to the CBBData API with core pages navigable.
+
+**Sprint Deliverable:** Revised proposal.md submitted. `python manage.py sync_data` populates 50+ teams. Home → team list → team detail navigation works with real data.
+
+---
+
+### Week 1: Proposal Revision + Initial Setup (Feb 18 – Feb 24)
+
+**Goals:** Address grader feedback, finalize schedule, resolve all dev environment issues across teammates' machines.
 
 | Person | Tasks |
 |--------|-------|
-| **Kenneth** | Define `Team` and `Conference` models in `models.py`; run and commit initial migrations; scaffold basic `TeamListView` and `ConferenceListView` |
-| **Jackson** | Build out `services.py` — implement `fetch_teams()`, `fetch_conferences()`, `sync_teams()`, `sync_conferences()`; write a management command (`sync_data`) to trigger syncing from the terminal |
-| **Alex** | Build navigation component in `base.html`; create `team_list.html` template with DaisyUI card or table layout; team card component |
-| **Samuel** | Research all available CBB API data fields; document which fields are needed for win %, point differential, and Four Factors; verify data quality and note any gaps |
+| **Kenneth** | Address grade.md feedback — customer persona, measures of success, block diagram, week-by-week schedule, expanded constraints; update Schedule.md with sprint structure |
+| **Alex** | Resolve any local dev environment issues; review revised proposal |
+| **Jackson** | Resolve npm/Node.js path issues (`NPM_BIN_PATH`); confirm `tailwind start` works on Windows machine |
+| **Samuel** | Review revised proposal; confirm dev environment working locally |
 
-**Milestone:** `python manage.py sync_data` populates 50+ teams in the database. Team list page renders real data.
+**Milestone:** All teammates running the dev server. Revised proposal submitted.
 
 > **📋 Proposal Revision due ~Feb 24**
 
 ---
 
-## Sprint 2: Core Pages & MVP (Feb 26 – Mar 11)
+### Week 2: Models, API Integration & Core Pages (Feb 24 – Mar 4)
 
-**Sprint Goal:** A fully navigable app with team list, team detail, and conference pages — functional enough to demo end-to-end.
+**Goals:** Core database models defined, CBBData API connected, data syncing into the database, and core pages navigable with real data.
+
+| Person | Tasks |
+|--------|-------|
+| **Kenneth** | Define `Team` and `Conference` models in `models.py`; run and commit initial migrations; build `HomeView`, `TeamListView`, `TeamDetailView`; URL routing for all core pages; pagination on team list |
+| **Jackson** | Build out `services.py` — implement `fetch_teams()`, `fetch_conferences()`, `sync_teams()`, `sync_conferences()`; write `sync_data` management command; expand sync to game results; add error handling and logging |
+| **Alex** | Build navigation component in `base.html`; `home.html` with conference cards/grid; `team_list.html` with search input and filter dropdowns (DaisyUI); `team_detail.html` page layout; responsive mobile navigation |
+| **Samuel** | Research CBB API data fields; document fields needed for win %, point differential, and Four Factors; implement win %, point differential, and pace in `opencourt/stats.py`; write unit tests for each calculation |
+
+**Milestone:** `sync_data` populates 50+ teams. Full navigation working — home → conference → team list → team detail, all with real data.
+
+---
+
+## Sprint 3: Core Features & MVP (Mar 5 – Mar 17)
+
+**Sprint Goal:** A fully navigable app with charts, analytics, and conference pages — functional enough to demo end-to-end for Status Report 1.
 
 **Sprint Deliverable:** Working app with real data, 3+ charts, and full navigation. Ready to demo.
 
 ---
 
-### Week 3: Core Pages (Feb 26 – Mar 4)
+### Week 1: Charts & Four Factors (Mar 5 – Mar 11)
 
-**Goals:** Home page with conference overview, team list with filtering, team detail page.
-
-| Person | Tasks |
-|--------|-------|
-| **Kenneth** | `HomeView` passing conference data to template; `TeamDetailView` with full stats context; URL routing for all core pages; pagination on team list |
-| **Jackson** | Expand data sync to include game results if available from API; add error handling and logging to `services.py`; populate any missing fields identified by Samuel |
-| **Alex** | `home.html` with conference cards/grid; `team_list.html` with search input and filter dropdowns (DaisyUI); `team_detail.html` page layout; responsive mobile navigation |
-| **Samuel** | Implement win %, point differential, and pace as model properties or utility functions in a new `opencourt/stats.py`; write unit tests for each calculation |
-
-**Milestone:** Full navigation working — home → conference → team list → team detail.
-
----
-
-### Week 4: Charts & Analytics (Mar 5–11)
-
-**Goals:** ApexCharts integrated, key visualizations rendering, MVP complete and demo-ready.
+**Goals:** ApexCharts integrated, key visualizations rendering, Four Factors analytics live.
 
 | Person | Tasks |
 |--------|-------|
-| **Kenneth** | Conference detail page; search functionality (filter teams by name/conference); ensure all views pass correct context for charts; code review Sprint 1–2 PRs |
+| **Kenneth** | Conference detail page; search functionality (filter teams by name/conference); ensure all views pass correct context for charts |
 | **Jackson** | Pull any additional data fields needed for charts (game-by-game logs, opponent stats); write a script to backfill historical data if needed |
-| **Alex** | Integrate ApexCharts — win/loss donut chart on team detail, points-per-game line chart, conference standings table; overall UI polish pass before demo |
+| **Alex** | Integrate ApexCharts — win/loss donut chart on team detail, points-per-game line chart, conference standings table |
 | **Samuel** | Four Factors calculations (eFG%, TOV%, ORB%, FT rate); team comparison utility; pass analytics data into view context for charts to consume |
 
 **Milestone: MVP complete — full working demo with real data and charts.**
@@ -114,32 +117,49 @@ Final    │ Apr 10 – Apr 14 │           │ Presentation & Submission
 
 ---
 
-## Sprint 3: Advanced Features & Polish (Mar 12 – Mar 25)
+### Week 2: Polish & Conference Pages (Mar 12 – Mar 17)
 
-**Sprint Goal:** Add 2–3 "wow" features beyond the MVP. App is polished, stable, and close to production quality.
+**Goals:** Conference pages complete, UI polished, all MVP PRs reviewed and merged.
 
-**Sprint Deliverable:** Advanced features live, UI polished, mobile responsive, code cleaned up.
+| Person | Tasks |
+|--------|-------|
+| **Kenneth** | Code review Sprint 2–3 PRs; fix any blocking bugs from Status Report 1 feedback; conference standings view |
+| **Jackson** | Data validation pass — verify all teams have complete data; fix any sync edge cases |
+| **Alex** | Overall UI polish pass — consistent spacing, typography, DaisyUI component cleanup |
+| **Samuel** | Document all stats calculations; ensure all analytics are passing correct data to templates |
+
+**Milestone:** Clean, polished MVP with all conference pages working and PRs merged.
 
 ---
 
-### Week 5: Advanced Features (Mar 12–18)
+## Sprint 4: Advanced Features & Analytics (Mar 18 – Mar 31)
+
+**Sprint Goal:** Add 2–3 features beyond MVP. Prediction model built and integrated. App is polished and close to production quality.
+
+**Sprint Deliverable:** Advanced features live, UI polished, mobile responsive, prediction model visible in UI.
+
+---
+
+### Week 1: Advanced Features & Prediction Model (Mar 18 – Mar 24)
 
 **Goals:** Head-to-head comparisons, custom rankings, and prediction model foundations.
 
 | Person | Tasks |
 |--------|-------|
 | **Kenneth** | Head-to-head matchup view (compare two teams side-by-side); custom rankings page with sortable table; review and merge PRs |
-| **Jackson** | Historical trends data pipeline (multi-season if available); data preparation for Samuel's prediction model — clean features, export to format suitable for training |
+| **Jackson** | Historical trends data pipeline (multi-season if available); data preparation for prediction model — clean features, export to training format |
 | **Alex** | Head-to-head comparison UI; custom rankings page with sortable/filterable DaisyUI table; historical trends chart (multi-season line chart in ApexCharts) |
 | **Samuel** | Build initial prediction model — feature engineering, train/test split, baseline model (logistic regression or random forest); evaluate accuracy; document approach |
 
 **Milestone:** Head-to-head page live. Prediction model producing outputs.
 
+> **📋 Status Report 2 due ~Mar 24**
+
 ---
 
-### Week 6: Polish & Testing (Mar 19–25)
+### Week 2: Polish & Model Integration (Mar 25 – Mar 31)
 
-**Goals:** Bug fixes, performance, mobile layout, prediction model integrated.
+**Goals:** Bug fixes, performance, mobile layout, prediction model integrated into UI.
 
 | Person | Tasks |
 |--------|-------|
@@ -150,19 +170,17 @@ Final    │ Apr 10 – Apr 14 │           │ Presentation & Submission
 
 **Milestone:** Stable, polished app with predictions visible in the UI.
 
-> **📋 Status Report 2 due ~Mar 24**
+---
+
+## Sprint 5: Deployment, Testing & Final Polish (Apr 1 – Apr 10)
+
+**Sprint Goal:** App is live on a public URL with a real PostgreSQL database, fully tested, and presentation-ready.
+
+**Sprint Deliverable:** Production URL shared with class. All features working in production. Presentation drafted.
 
 ---
 
-## Sprint 4: Deployment & Final Polish (Mar 26 – Apr 9)
-
-**Sprint Goal:** App is live on a public URL with a real PostgreSQL database.
-
-**Sprint Deliverable:** Production URL shared with class. All features working in production.
-
----
-
-### Week 7: Deployment (Mar 26 – Apr 1)
+### Week 1: Production Deployment (Apr 1 – Apr 7)
 
 **Goals:** Production environment live, PostgreSQL on Supabase, all environment variables configured.
 
@@ -177,7 +195,7 @@ Final    │ Apr 10 – Apr 14 │           │ Presentation & Submission
 
 ---
 
-### Week 8: Final Polish & Presentation Prep (Apr 2–9)
+### Week 2: Final Polish & Presentation Prep (Apr 7 – Apr 10)
 
 **Goals:** No open bugs. Presentation ready. Demo rehearsed.
 
@@ -195,7 +213,11 @@ Final    │ Apr 10 – Apr 14 │           │ Presentation & Submission
 
 ---
 
-## Final Week (Apr 10–14)
+## Sprint 6: Presentation & Submission (Apr 10 – Apr 14)
+
+**Sprint Goal:** Deliver the final presentation and submit all project materials.
+
+**Sprint Deliverable:** Presentation delivered, project submitted, live demo completed.
 
 | Task | Owner |
 |------|-------|
@@ -212,13 +234,14 @@ Final    │ Apr 10 – Apr 14 │           │ Presentation & Submission
 
 | Milestone | Date |
 |-----------|------|
-| All teammates running dev server locally | Feb 25 |
-| Real data syncing from CBB API | Feb 25 |
-| Core pages complete (list, detail, navigation) | Mar 4 |
+| Proposal submitted | Feb 17 ✓ |
+| Proposal revision submitted | Feb 24 |
+| Real data syncing from CBB API | Feb 28 |
+| Core pages complete (list, detail, navigation) | **Mar 4** |
 | **MVP complete — ready to demo** | **Mar 10** |
-| Advanced features + predictions live | Mar 18 |
-| App fully polished and stable | Mar 25 |
-| **Production deployment live** | **Apr 1** |
+| Advanced features + predictions live | Mar 24 |
+| App fully polished and stable | Mar 31 |
+| **Production deployment live** | **Apr 7** |
 | Presentation rehearsed | Apr 9 |
 | **Final submission** | **Apr 14** |
 
@@ -227,7 +250,7 @@ Final    │ Apr 10 – Apr 14 │           │ Presentation & Submission
 ## Contingency Plans
 
 **If behind schedule:**
-- Cut prediction model from Week 5 — defer to post-MVP stretch goal
+- Cut prediction model from Sprint 4 — defer to post-MVP stretch goal
 - Simplify charts to 2 core visualizations (win/loss donut + standings table)
 - Use static fixture data instead of live sync if API issues arise
 - Focus on a polished, stable app over feature count
@@ -250,4 +273,4 @@ A task is only complete when:
 
 ---
 
-*Last Updated: Feb 19, 2026*
+*Last Updated: Feb 24, 2026*
