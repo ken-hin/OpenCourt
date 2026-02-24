@@ -33,7 +33,11 @@ Project Proposal Outline
   - Proposed Solution  
     - OpenCourt Stats will offer free access to advanced team efficiency analysis, interactive         graphics, and a transparent predictive model for college basketball games. The service           will focus on ease of use and will enable users to compare teams, examine trends, and            display prediction results without the need for a subscription.
   - Measures of Success  
-    - Having useful tools available for free for anyone to use?  
+    - Achieve at least 200 unique users during March Madness.
+    - At least 30% of users return for 3 or more sessions.
+    - Average session time ≥ 3 minutes.
+    - User survey rating of prediction usefulness ≥ 4/5.
+    - Prediction accuracy exceeding baseline (e.g., outperforming simple win-percentage model). 
 - Section 3: Proposed Solution & Technology  
   - System: technology you deliver  
     - Basic web application that displays CBB stats/data and provides analysis based on a predictive model  
