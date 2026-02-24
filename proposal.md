@@ -31,7 +31,7 @@ Project Proposal Outline
   - Customer Need  
     - Our target audience is a college basketball fan (ages 18-35) who engages in bracket              contests (such as March Madness), follows discussions of advanced statistics on the              internet, and is hungry for more information without having to pay for a subscription to         advanced analytics tools. College basketball fans who are casual or semi-serious fans do         not have access to advanced efficiency statistics and forecasting tools because the best         tools available are behind paywalls. They are forced to rely on basic statistics (such as        points per game, winning percentage) that do not accurately measure a team's quality. 
   - Proposed Solution  
-    - Our solution will provide a user-friendly experience for users who are searching for up-to-date statistics on college basketball teams.  
+    - OpenCourt Stats will offer free access to advanced team efficiency analysis, interactive         graphics, and a transparent predictive model for college basketball games. The service           will focus on ease of use and will enable users to compare teams, examine trends, and            display prediction results without the need for a subscription.
   - Measures of Success  
     - Having useful tools available for free for anyone to use?  
 - Section 3: Proposed Solution & Technology  
