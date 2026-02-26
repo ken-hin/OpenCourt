@@ -4,8 +4,8 @@
 # Wire each view up to a URL in opencourt/urls.py.
 # Templates live in templates/opencourt/.
 
-from django.views.generic import TemplateView
-
+from django.views.generic import TemplateView, ListView
+from opencourt.models import Team
 
 class HomeView(TemplateView):
     """Renders the home page."""
@@ -16,3 +16,11 @@ class HomeView(TemplateView):
 class AboutView(TemplateView):
     """Renders the about page."""
     template_name = 'opencourt/about.html'
+
+class TeamListView(ListView):
+    """Renders the team list page."""
+    model = Team
+    template_name = 'opencourt/teams.html'
+
+    def get_queryset(self):
+      return Team.objects.all()
