@@ -5,7 +5,8 @@
 # Example: admin.site.register(Team)
 
 from django.contrib import admin
-from opencourt.models import Team
+from opencourt.models import Team, Conference
 
 # Models will be registered here
 admin.site.register(Team)
+admin.site.register(Conference)

@@ -51,3 +51,22 @@ class Team(models.Model):
   def __str__(self):
     """Return the school name (e.g. 'Duke') for admin and shell display."""
     return self.school
+
+class Conference(models.Model):
+
+  id = models.BigAutoField(primary_key=True)
+  source_id = models.IntegerField(null = True, blank = True)
+  slug = models.SlugField(unique=True)
+  name = models.CharField(max_length=255)
+  abbrv = models.CharField(max_length=255)
+  short_name = models.CharField(max_length=255)
+
+  def save(self, *args, **kwargs):
+
+    if not self.slug:
+      self.slug = slugify(f"{self.short_name}")
+
+    super().save(*args, **kwargs)
+
+  def __str__(self):
+    return self.abbrv
