@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}Teams — OpenCourt{% endblock %}
+<!-- Example of how you can use for loops with model objects.
+     Uncomment the following block and the corresponding for loop
+     to display a list of SEC teams. -->
+{% block content %}
+  <div class="flex flex-wrap gap-4">
+    {% for team in team_list %}
+      {% if team.conference == 'SEC' %}
+      <!--
+        <div class="card w-64 bg-base-200 shadow-sm">
+          <div class="card-body">
+            <h2 class="card-title">{{ team.school }}</h2>
+          </div>
+        </div>
+      -->
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endblock %}
+-->
