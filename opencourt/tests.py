@@ -5,5 +5,9 @@
 # Run just this app's tests with: python manage.py test opencourt
 
 from django.test import TestCase
+from opencourt import stats
 
 # Tests will be defined here
+class Win_percent(TestCase):
+    def test_win_test(self):
+        self.assertEqual(stats.win_percentage(36, 20), 64.29)
