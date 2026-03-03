@@ -14,4 +14,5 @@ urlpatterns = [
     # Additional URLs will be added here (e.g. team list, team detail, conferences)
     path('about/', views.AboutView.as_view(), name='about'),
     path('teams/', views.TeamListView.as_view(), name='teams'),
+    path('conferences/', views.ConferenceListView.as_view(), name='conferences'),
 ]

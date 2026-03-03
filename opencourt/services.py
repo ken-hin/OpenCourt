@@ -89,10 +89,9 @@ def fetch_teams():
   iterate without checking for None.
 
   Error handling covers three failure modes:
-    - ValueError        : bad endpoint name passed to init_api_client
-    - cbbd.ApiException : API-level errors (401 unauthorized, 403 forbidden,
-                          429 rate limit, 500 server error)
-    - ConnectionError   : network issues (DNS failure, timeout, refused)
+    - ValueError: bad endpoint name passed to init_api_client
+    - cbbd.ApiException: API-level errors (401 unauthorized, 403 forbidden, 429 rate limit, 500 server error)
+    - ConnectionError: network issues (DNS failure, timeout, refused)
 
   Returns:
       list — cbbd team objects from the API, or [] on any error.
@@ -145,7 +144,6 @@ def sync_teams():
     """
     teams = fetch_teams()
     # Guard clause — if the API returned nothing, don't silently continue.
-    # This distinguishes "API is down" from "there are zero teams."
     if not teams:
       logger.warning("sync_teams: fetch_teams() returned no data — skipping sync.")
       return
