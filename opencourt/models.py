@@ -13,7 +13,7 @@ class Team(models.Model):
 
   Populated by sync_teams() in services.py, which pulls data from the
   CBBData API and upserts rows using update_or_create(). The `id` field
-  matches the API's primary key so lookups stay consistent across syncs.
+  matches the API's primary key, so lookups stay consistent across syncs.
 
   URL-friendly slugs are auto-generated from school + mascot on first save
   (e.g. "duke-blue-devils") and used for team detail page URLs.
