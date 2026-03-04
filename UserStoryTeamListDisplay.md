@@ -4,6 +4,8 @@
 **I want** to browse a list of all Division I teams organized by conference,
 **so that** I can quickly find and navigate to my team's stats page.
 
+(Issue #19)
+
 ## Acceptance Criteria
 
 - `/teams/` renders a card for every team in the database
