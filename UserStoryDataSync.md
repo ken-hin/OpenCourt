@@ -1,8 +1,10 @@
-# User Story: Data Sync & Retrieval (Issue #18)
+# User Story: Data Sync & Retrieval
 
 **As a** site admin,
 **I want** to run a single CLI command that fetches and syncs all team and conference data from the CBBData API into the database,
 **so that** the site always serves up-to-date stats without requiring manual database edits.
+
+(Issue #18)
 
 ## Acceptance Criteria
 
