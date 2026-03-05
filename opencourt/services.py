@@ -23,7 +23,7 @@ from datetime import date
 import os
 import cbbd
 from django.db import IntegrityError
-from .models import Team
+from .models import Team, Conference
 
 # Module-level logger — use `logging.getLogger(__name__)` so log messages
 # are tagged with 'opencourt.services', making them easy to filter in
@@ -118,10 +118,28 @@ def fetch_teams():
     return []
 
 # --- Conference Data ---
+def fetch_conferences():
+  """
+  Fetch all conferences from the CBBData API.
+  Returns the raw API response (a list of cbbd conference objects).
+  Returns an empty list if the API call fails.
+  """
+  try:
+    api_instance = init_api_client(configuration, 'ConferencesApi')
+    conferences = api_instance.get_conferences()
+    return conferences
 
-# def fetch_conferences():
-#     """Fetch all conferences from the CBB API. Returns a list of conference dicts."""
-#     pass
+  except cbbd.ApiException as exc:
+    logger.error("CBBData API error fetching conferences (HTTP %s): %s", exc.status, exc.reason)
+    return []
+
+  except ConnectionError as exc:
+    logger.error("Connection error fetching conferences: %s", exc)
+    return []
+
+  except ValueError as exc:
+    logger.error("Configuration error in fetch_conferences: %s", exc)
+    return []
 
 # --- Sync Functions ---
 def sync_teams():
@@ -194,6 +212,43 @@ def sync_teams():
       created_count, updated_count, skipped_count, len(teams)
     )
 
-# def sync_conferences():
-#     """Fetch conferences from the API and upsert them into the Conference model."""
-#     pass
+def sync_conferences():
+  """
+  Fetch all conferences from the CBBData API and upsert them into the Conference model.
+  Called by the sync_data management command: python manage.py sync_data
+  """
+  conferences = fetch_conferences()
+
+  if not conferences:
+    logger.warning("sync_conferences: fetch_conferences() returned no data — skipping sync.")
+    return
+
+  created_count = 0
+  updated_count = 0
+  skipped_count = 0
+
+  for conference in conferences:
+    try:
+      conf_dict = conference.to_dict()
+      conf_obj, created = Conference.objects.update_or_create(
+        id=conf_dict['id'],
+        defaults={
+          'source_id': conf_dict.get('sourceId'),
+          'name': conf_dict.get('name', ''),
+          'abbrv': conf_dict.get('abbreviation', ''),
+          'short_name': conf_dict.get('shortName', ''),
+        }
+      )
+      if created:
+        created_count += 1
+      else:
+        updated_count += 1
+
+    except (IntegrityError, KeyError) as exc:
+      skipped_count += 1
+      logger.warning("Skipped conference (id=%s): %s", conf_dict.get('id', '?'), exc)
+
+  logger.info(
+    "sync_conferences complete — %d created, %d updated, %d skipped (of %d total).",
+    created_count, updated_count, skipped_count, len(conferences)
+  )
