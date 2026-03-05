@@ -6,8 +6,18 @@
 <!-- Main page title -->
 <h1 class="text-4xl font-bold text-center py-8">D1 Teams</h1>
 
+<!-- Conference toggle buttons -->
+<form class="flex justify-center gap-2 mb-4 conf-filter">
+  <input class="btn" type="checkbox" name="conference" data-target="acc-section"  aria-label="ACC"/>
+  <input class="btn" type="checkbox" name="conference" data-target="big10-section"  aria-label="Big 10"/>
+  <input class="btn" type="checkbox" name="conference" data-target="big12-section"  aria-label="Big 12"/>
+  <input class="btn" type="checkbox" name="conference" data-target="big-east-section" aria-label="Big East"/>
+  <input class="btn" type="checkbox" name="conference" data-target="sec-section"  aria-label="SEC"/>
+  <input class="btn" type="reset" value="Reset"/>
+</form>
+
 <!-- ACC Teams -->
-<section class="py-8">
+<section class="py-8" id="acc-section" >
   <h2 class="text-3xl font-bold text-center mb-6">ACC Teams</h2>
   <div class="flex flex-wrap gap-4 justify-center">
     {% for team in team_list %}
@@ -23,7 +33,7 @@
 </section>
 
 <!-- Big Ten Teams -->
-<section class="py-8">
+<section class="py-8" id="big10-section">
   <h2 class="text-3xl font-bold text-center mb-6">Big Ten Teams</h2>
   <div class="flex flex-wrap gap-4 justify-center">
     {% for team in team_list %}
@@ -39,7 +49,7 @@
 </section>
 
 <!-- Big 12 Teams -->
-<section class="py-8">
+<section class="py-8" id="big12-section">
   <h2 class="text-3xl font-bold text-center mb-6">Big 12 Teams</h2>
   <div class="flex flex-wrap gap-4 justify-center">
     {% for team in team_list %}
@@ -55,7 +65,7 @@
 </section>
 
 <!-- Big East Teams -->
-<section class="py-8">
+<section class="py-8" id="big-east-section">
   <h2 class="text-3xl font-bold text-center mb-6">Big East Teams</h2>
   <div class="flex flex-wrap gap-4 justify-center">
     {% for team in team_list %}
@@ -71,7 +81,7 @@
 </section>
 
 <!-- SEC Teams -->
-<section class="py-8">
+<section class="py-8" id="sec-section">
   <h2 class="text-3xl font-bold text-center mb-6">SEC Teams</h2>
   <div class="flex flex-wrap gap-4 justify-center">
     {% for team in team_list %}
