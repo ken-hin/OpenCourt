@@ -1,22 +1,89 @@
 {% extends 'base.html' %}
 
 {% block title %}Teams — OpenCourt{% endblock %}
-<!-- Example of how you can use for loops with model objects.
-     Uncomment the following block and the corresponding for loop
-     to display a list of SEC teams. -->
+
 {% block content %}
-  <div class="flex flex-wrap gap-4">
+<!-- Main page title -->
+<h1 class="text-4xl font-bold text-center py-8">D1 Teams</h1>
+
+<!-- ACC Teams -->
+<section class="py-8">
+  <h2 class="text-3xl font-bold text-center mb-6">ACC Teams</h2>
+  <div class="flex flex-wrap gap-4 justify-center">
     {% for team in team_list %}
-      {% if team.conference == 'SEC' %}
-      <!--
-        <div class="card w-64 bg-base-200 shadow-sm">
-          <div class="card-body">
-            <h2 class="card-title">{{ team.school }}</h2>
+      {% if team.conference == 'ACC' %}
+        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
+          <div class="card-body text-center">
+            <h3 class="card-title text-white">{{ team.school }}</h3>
           </div>
         </div>
-      -->
       {% endif %}
     {% endfor %}
   </div>
+</section>
+
+<!-- Big Ten Teams -->
+<section class="py-8">
+  <h2 class="text-3xl font-bold text-center mb-6">Big Ten Teams</h2>
+  <div class="flex flex-wrap gap-4 justify-center">
+    {% for team in team_list %}
+      {% if team.conference == 'Big Ten' %}
+        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
+          <div class="card-body text-center">
+            <h3 class="card-title text-white">{{ team.school }}</h3>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Big 12 Teams -->
+<section class="py-8">
+  <h2 class="text-3xl font-bold text-center mb-6">Big 12 Teams</h2>
+  <div class="flex flex-wrap gap-4 justify-center">
+    {% for team in team_list %}
+      {% if team.conference == 'Big 12' %}
+        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
+          <div class="card-body text-center">
+            <h3 class="card-title text-white">{{ team.school }}</h3>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Big East Teams -->
+<section class="py-8">
+  <h2 class="text-3xl font-bold text-center mb-6">Big East Teams</h2>
+  <div class="flex flex-wrap gap-4 justify-center">
+    {% for team in team_list %}
+      {% if team.conference == 'Big East' %}
+        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
+          <div class="card-body text-center">
+            <h3 class="card-title text-white">{{ team.school }}</h3>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+
+<!-- SEC Teams -->
+<section class="py-8">
+  <h2 class="text-3xl font-bold text-center mb-6">SEC Teams</h2>
+  <div class="flex flex-wrap gap-4 justify-center">
+    {% for team in team_list %}
+      {% if team.conference == 'SEC' %}
+        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
+          <div class="card-body text-center">
+            <h3 class="card-title text-white">{{ team.school }}</h3>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+
 {% endblock %}
--->
