@@ -191,8 +191,9 @@ def sync_teams():
             'current_venue_name' : team_dict.get('currentVenue', ''),
             'current_city' : team_dict.get('currentCity', ''),
             'current_state' : team_dict.get('currentState', ''),
-            'conference_id' : team_dict.get('conferenceId'),
-            'conference' : team_dict.get('conference', ''),
+            # Raw API integer ID — kept for reference. The ForeignKey (conference)
+            # is linked separately once sync_conferences() has run.
+            'api_conference_id' : team_dict.get('conferenceId'),
           }
         )
         if created:
@@ -247,6 +248,13 @@ def sync_conferences():
     except (IntegrityError, KeyError) as exc:
       skipped_count += 1
       logger.warning("Skipped conference (id=%s): %s", conf_dict.get('id', '?'), exc)
+  # Link each team's conference FK using the raw api_conference_id
+  for team in Team.objects.filter(conference__isnull = True, api_conference_id__isnull = False) :
+    try :
+      team.conference = Conference.objects.get(id = team.api_conference_id)
+      team.save(update_fields = ['conference'])
+    except Conference.DoesNotExist :
+      logger.warning("No Conference found for api_conference_id=%s", team.api_conference_id)
 
   logger.info(
     "sync_conferences complete — %d created, %d updated, %d skipped (of %d total).",

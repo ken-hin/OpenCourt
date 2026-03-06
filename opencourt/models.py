@@ -33,8 +33,20 @@ class Team(models.Model):
   current_venue_name = models.CharField(max_length = 200, null = True, blank = True)
   current_city = models.CharField(max_length = 100, null = True, blank = True)
   current_state = models.CharField(max_length = 50, null = True, blank = True)
-  conference_id = models.IntegerField(null = True, blank = True)
-  conference = models.CharField(max_length = 100, null = True, blank = True)
+  # Raw integer ID from the CBBData API — kept for reference during syncs.
+  # Django will create its own `conference_id` column for the ForeignKey below,
+  # so this field is renamed to avoid a collision.
+  api_conference_id = models.IntegerField(null = True, blank = True)
+  # FK to the Conference model — null until sync_conferences() has run and
+  # populated the conferences table. Use team.conference to get the full object,
+  # team.conference_id for the FK integer, conference.teams.all() for the reverse.
+  conference = models.ForeignKey(
+    'Conference',
+    null = True,
+    blank = True,
+    on_delete = models.SET_NULL,  # if a conference is deleted, don't delete its teams
+    related_name = 'teams',       # enables conference.teams.all()
+  )
 
   def save(self, *args, **kwargs):
     """
