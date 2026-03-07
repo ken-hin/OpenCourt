@@ -22,58 +22,54 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}OpenCourt{% endblock %}</title>
-    {% load static %}
+  <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}OpenCourt{% endblock %}</title>
+  {% load static %}
 
-    <!--
-        Tailwind CSS + DaisyUI — compiled from theme/static_src/src/styles.css
-        by the Tailwind CLI. Run `python manage.py tailwind start` in a second
-        terminal while developing to keep this file auto-updated on save.
-        Run `python manage.py tailwind build` to produce a minified production build.
-    -->
-    <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
+  <!--
+      Tailwind CSS + DaisyUI — compiled from theme/static_src/src/styles.css
+      by the Tailwind CLI. Run `python manage.py tailwind start` in a second
+      terminal while developing to keep this file auto-updated on save.
+      Run `python manage.py tailwind build` to produce a minified production build.
+  -->
+  <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
+  <!-- Custom styles — for anything Tailwind and DaisyUI don't cover -->
+  <link rel="stylesheet" href="{% static 'css/main.css' %}">
+  <script src="https://kit.fontawesome.com/bd57e37b5a.js" crossorigin="anonymous"></script>
 
-    <!-- Custom styles — for anything Tailwind and DaisyUI don't cover -->
-    <link rel="stylesheet" href="{% static 'css/main.css' %}">
-
-    {% block extra_css %}{% endblock %}
+  {% block extra_css %}{% endblock %}
 </head>
+
 <body>
+  <!-- Navbar -->
+  <nav class="navbar bg-opacity-0 fixed backdrop-blur-2xl px-10 shadow top-0 z-10">
+    <div class="flex-1">
+      <a href="{% url 'opencourt:home' %}" class="text-xl font-bold">OpenCourt</a>
+    </div>
+    <div class="flex gap-4">
+      <a href="{% url 'opencourt:home' %}" class="hover:text-primary">Home</a>
+      <a href="{% url 'opencourt:teams' %}" class="hover:text-primary">Teams</a>
+      <a href="{% url 'opencourt:about' %}" class="hover:text-primary">About</a>
+    </div>
+  </nav>
+  <!-- Main content -->
+  <main class="container mx-auto my-auto py-15">
+    {% block content %}{% endblock %}
+  </main>
 
-    <nav class="navbar bg-base-100 shadow px-6">
-        <!-- Navigation will be built here -->
-        <div class="flex-1">
-            <a href="/" class="text-xl font-bold">OpenCourt</a>
-        </div>
-        <div class="flex gap-4">
-            <a href="{% url 'opencourt:home' %}" class="hover:text-primary">Home</a>
-            <a href="{% url 'opencourt:teams' %}" class="hover:text-primary">Teams</a>
-            <a href="{% url 'opencourt:about' %}" class="hover:text-primary">About</a>
-        </div>
-    </nav>
+  <footer>
+    <!-- Footer will be built here -->
+  </footer>
 
-    <main>
-        {% block content %}{% endblock %}
-    </main>
-
-    <footer>
-        <!-- Footer will be built here -->
-    </footer>
-
-    <!--
-        ApexCharts — interactive chart library used for all data visualizations.
-        To render a chart, target a <div id="chart"> in your template and initialize
-        it in a page-specific script block. Loaded globally since most pages will
-        display stats. Full docs: https://apexcharts.com/docs/installation/
-    -->
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-
-    <!-- Global JS — utility functions shared across all pages -->
-    <script src="{% static 'js/main.js' %}"></script>
-
-    {% block extra_js %}{% endblock %}
+  <!--
+      ApexCharts — an interactive chart library used for all data visualizations.
+      To render a chart, target a <div id="chart"> in your template and initialize
+      it in a page-specific script block. Loaded globally since most pages will
+      display stats. Full docs: https://apexcharts.com/docs/installation/
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <!-- Global JS — utility functions shared across all pages -->
+  <script src="{% static 'js/main.js' %}"></script>
 
 </body>
 </html>
