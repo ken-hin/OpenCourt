@@ -1,99 +1,69 @@
 {% extends 'base.html' %}
-
+{% load static %}
 {% block title %}Teams — OpenCourt{% endblock %}
 
 {% block content %}
-<!-- Main page title -->
-<h1 class="text-4xl font-bold text-center py-8">D1 Teams</h1>
 
-<!-- Conference toggle buttons -->
-<form class="flex justify-center gap-2 mb-4 conf-filter">
-  <input class="btn" type="checkbox" name="conference" data-target="acc-section"  aria-label="ACC"/>
-  <input class="btn" type="checkbox" name="conference" data-target="big10-section"  aria-label="Big 10"/>
-  <input class="btn" type="checkbox" name="conference" data-target="big12-section"  aria-label="Big 12"/>
-  <input class="btn" type="checkbox" name="conference" data-target="big-east-section" aria-label="Big East"/>
-  <input class="btn" type="checkbox" name="conference" data-target="sec-section"  aria-label="SEC"/>
-  <input class="btn" type="reset" value="Reset"/>
-</form>
-
-<!-- ACC Teams -->
-<section class="py-8" id="acc-section" >
-  <h2 class="text-3xl font-bold text-center mb-6">ACC Teams</h2>
-  <div class="flex flex-wrap gap-4 justify-center">
-    {% for team in team_list %}
-      {% if team.conference == 'ACC' %}
-        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
-          <div class="card-body text-center">
-            <h3 class="card-title text-white">{{ team.school }}</h3>
+  <div class="container mx-auto py-15">
+    <!-- Search/Filtering -->
+    <div class="flex flex-col gap-4 my-7 mx-15 content-stretch">
+      <!-- Search bar -->
+      <div class="join flex items-center">
+        <label class="input join-item grow-4">
+          <input type="search" placeholder="Search" />
+        </label>
+        <button class="btn btn-neutral join-item grow-0">
+          <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+        </button>
+      </div>
+      <!-- Conference Filter -->
+      <div>
+        <form class="flex items-center gap-2 conf-filter grow-4">
+          <input class="btn filter-btn" type="checkbox" name="conference" data-target="acc-section" aria-label="ACC"/>
+          <input class="btn filter-btn" type="checkbox" name="conference" data-target="big10-section" aria-label="Big 10"/>
+          <input class="btn filter-btn" type="checkbox" name="conference" data-target="big12-section" aria-label="Big 12"/>
+          <input class="btn filter-btn" type="checkbox" name="conference" data-target="big-east-section" aria-label="Big East"/>
+          <input class="btn filter-btn" type="checkbox" name="conference" data-target="sec-section" aria-label="SEC"/>
+          <input class="btn btn-square btn-md" type="reset" value="x"/>
+        </form>
+      </div>
+    </div>
+    <!-- Team Cards -->
+    <div class="flex flex-wrap gap-x-7 gap-y-5 -mx-7 justify-center">
+      {% for team in team_list %}
+        <!-- ACC Teams -->
+        {% if team.conference.slug == 'acc' %}
+          <!-- Team Card -->
+          <div class="card w-sm team-card" id="acc-section" style="background-color: #{{ team.primary_color }}CC;">
+            {% include 'opencourt/components/team_card.html' %}
           </div>
-        </div>
-      {% endif %}
-    {% endfor %}
-  </div>
-</section>
-
-<!-- Big Ten Teams -->
-<section class="py-8" id="big10-section">
-  <h2 class="text-3xl font-bold text-center mb-6">Big Ten Teams</h2>
-  <div class="flex flex-wrap gap-4 justify-center">
-    {% for team in team_list %}
-      {% if team.conference == 'Big Ten' %}
-        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
-          <div class="card-body text-center">
-            <h3 class="card-title text-white">{{ team.school }}</h3>
+        <!-- Big Ten Teams -->
+        {% elif team.conference.slug == 'big-ten' %}
+          <div class="card w-sm team-card" id="big10-section" style="background-color: #{{ team.primary_color }}CC;">
+            {% include 'opencourt/components/team_card.html' %}
           </div>
-        </div>
-      {% endif %}
-    {% endfor %}
-  </div>
-</section>
-
-<!-- Big 12 Teams -->
-<section class="py-8" id="big12-section">
-  <h2 class="text-3xl font-bold text-center mb-6">Big 12 Teams</h2>
-  <div class="flex flex-wrap gap-4 justify-center">
-    {% for team in team_list %}
-      {% if team.conference == 'Big 12' %}
-        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
-          <div class="card-body text-center">
-            <h3 class="card-title text-white">{{ team.school }}</h3>
+        <!-- Big 12 Teams -->
+        {% elif team.conference.slug == 'big-12' %}
+          <div class="card w-sm team-card" id="big12-section" style="background-color: #{{ team.primary_color }}CC;">
+            {% include 'opencourt/components/team_card.html' %}
           </div>
-        </div>
-      {% endif %}
-    {% endfor %}
-  </div>
-</section>
-
-<!-- Big East Teams -->
-<section class="py-8" id="big-east-section">
-  <h2 class="text-3xl font-bold text-center mb-6">Big East Teams</h2>
-  <div class="flex flex-wrap gap-4 justify-center">
-    {% for team in team_list %}
-      {% if team.conference == 'Big East' %}
-        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
-          <div class="card-body text-center">
-            <h3 class="card-title text-white">{{ team.school }}</h3>
+        <!-- Big East Teams -->
+        {% elif team.conference.slug == 'big-east' %}
+          <div class="card w-sm team-card" id="big-east-section" style="background-color: #{{ team.primary_color }}CC;">
+            {% include 'opencourt/components/team_card.html' %}
           </div>
-        </div>
-      {% endif %}
-    {% endfor %}
-  </div>
-</section>
-
-<!-- SEC Teams -->
-<section class="py-8" id="sec-section">
-  <h2 class="text-3xl font-bold text-center mb-6">SEC Teams</h2>
-  <div class="flex flex-wrap gap-4 justify-center">
-    {% for team in team_list %}
-      {% if team.conference == 'SEC' %}
-        <div class="card w-64 shadow-sm" style="background-color: #{{ team.primary_color }};">
-          <div class="card-body text-center">
-            <h3 class="card-title text-white">{{ team.school }}</h3>
+        <!-- SEC Teams -->
+        {% elif team.conference.slug == 'sec' %}
+          <div class="card w-sm team-card" id="sec-section" style="background-color: #{{ team.primary_color }}CC;">
+            {% include 'opencourt/components/team_card.html' %}
           </div>
-        </div>
-      {% endif %}
-    {% endfor %}
+        {% else %}{% endif %}{% endfor %}
+    </div>
+
   </div>
-</section>
+
+  <script src="{% static 'js/conference_filter.js' %}"></script>
+  <style src="{% static 'css/main.css' %}"></style>
 
 {% endblock %}
+

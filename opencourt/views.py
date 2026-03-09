@@ -28,7 +28,19 @@ class ConferenceListView(ListView):
     """Renders the conference list page."""
     model = Conference
     # Uncomment when conference.html is created
-    # template_name = 'opencourt/conferences.html'
+    template_name = 'opencourt/conferences.html'
 
     def get_queryset(self):
       return Conference.objects.all()
+
+class TeamDetailView(TemplateView):
+    """ Renders the team detail page."""
+    model = Team
+    template_name = 'opencourt/team_details.html'
+    slug_field = 'slug'
+    slug_url_kwarg = 'slug'
+
+    def get_context_data(self, **kwargs):
+      context = super(TeamDetailView, self).get_context_data(**kwargs)
+      context['team'] = Team.objects.get(slug=self.kwargs['slug'])
+      return context

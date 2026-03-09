@@ -19,6 +19,18 @@
 /* === Brand / Global === */
 /* Add site-wide custom styles here */
 
+/* === Animations  === */
+/* Always-on transition so both show and hide animate smoothly. */
+.team-card {
+  transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+/* "Out" state — scaled down and invisible. JS adds this class before
+   hiding a card (shrink-out) and before revealing one (grows-in). */
+.team-card.card-out {
+  transform: scale(0.90);
+  transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+  opacity: 0;
+}
 
 /* === Layout === */
 /* Add custom layout styles here */

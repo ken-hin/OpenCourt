@@ -47,13 +47,12 @@
       <a href="{% url 'opencourt:home' %}" class="text-xl font-bold">OpenCourt</a>
     </div>
     <div class="flex gap-4">
-      <a href="{% url 'opencourt:home' %}" class="hover:text-primary">Home</a>
       <a href="{% url 'opencourt:teams' %}" class="hover:text-primary">Teams</a>
       <a href="{% url 'opencourt:about' %}" class="hover:text-primary">About</a>
     </div>
   </nav>
   <!-- Main content -->
-  <main class="container mx-auto my-auto py-15">
+  <main>
     {% block content %}{% endblock %}
   </main>
 
@@ -70,7 +69,7 @@
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   <!-- Global JS — utility functions shared across all pages -->
   <script src="{% static 'js/main.js' %}"></script>
-  
+
   {% block extra_js %}{% endblock %}
 
 </body>
