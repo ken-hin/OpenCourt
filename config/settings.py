@@ -163,3 +163,40 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# --- Logging ---
+# Outputs INFO and above from the opencourt app to the console so that
+# sync summary lines (created/updated/skipped counts, warnings) are
+# visible when running management commands like `python manage.py sync_data`.
+#
+# To silence a noisy logger temporarily, raise its level to WARNING or ERROR.
+# In production, swap the console handler for a file or external log service.
+LOGGING = {
+  'version': 1,
+  'disable_existing_loggers': False,
+  'formatters': {
+    # Simple format for dev: just the level and message, no timestamps.
+    # Swap in 'verbose' for production to include timestamps and module paths.
+    'simple': {
+      'format': '[{levelname}] {message}',
+      'style': '{',
+    },
+  },
+  'handlers': {
+    'console': {
+      'class': 'logging.StreamHandler',
+      'formatter': 'simple',
+    },
+  },
+  'loggers': {
+    # opencourt app — covers services.py, models.py, views.py, etc.
+    'opencourt': {
+      'handlers': ['console'],
+      'level': 'INFO',
+      'propagate': False,
+    },
+  },
+}

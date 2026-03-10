@@ -5,7 +5,7 @@
 # Templates live in templates/opencourt/.
 
 from django.views.generic import TemplateView, ListView
-from opencourt.models import Team, Conference
+from opencourt.models import Team, Conference, TeamSeasonStats
 
 class HomeView(TemplateView):
     """Renders the home page."""
@@ -35,12 +35,11 @@ class ConferenceListView(ListView):
 
 class TeamDetailView(TemplateView):
     """ Renders the team detail page."""
-    model = Team
+    model = TeamSeasonStats
     template_name = 'opencourt/team_details.html'
     slug_field = 'slug'
     slug_url_kwarg = 'slug'
 
     def get_context_data(self, **kwargs):
-      context = super(TeamDetailView, self).get_context_data(**kwargs)
-      context['team'] = Team.objects.get(slug=self.kwargs['slug'])
+      context = { 'season_stats' : TeamSeasonStats.objects.filter(team__slug=self.kwargs['slug']) }
       return context

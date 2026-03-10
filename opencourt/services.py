@@ -4,10 +4,6 @@
 # Keeping this separate from views.py means views stay clean and focused on
 # HTTP logic, while all the data-fetching details live here.
 #
-# Usage pattern — call these functions from views.py:
-#   from opencourt.services import fetch_teams
-#   teams = fetch_teams()
-#
 # The `requests` library is already listed in pyproject.toml and installed by `uv sync`.
 # No additional installation step is needed.
 #
@@ -19,11 +15,14 @@
 #   - sync_teams()        : fetch from API and save to the database
 #   - sync_conferences()  : fetch from API and save to the database
 import logging
+import time
 from datetime import date
 import os
 import cbbd
+from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 from django.db import IntegrityError
-from .models import Team, Conference
+from .models import Team, Conference, TeamSeasonStats
 
 # Module-level logger — use `logging.getLogger(__name__)` so log messages
 # are tagged with 'opencourt.services', making them easy to filter in
@@ -31,12 +30,22 @@ from .models import Team, Conference
 logger = logging.getLogger(__name__)
 
 # --- API Config ---
-# Configure and create the client for calling CFBD API
 configuration = cbbd.Configuration(
   host = "https://api.collegebasketballdata.com",
   api_key = os.environ.get('CBB_API_KEY'),
   access_token = os.environ.get('CBB_API_KEY'),
 )
+# --- Constants ---
+# API endpoints
+TEAMS_ENDPOINT = 'TeamsApi'
+CONFERENCES_ENDPOINT = 'ConferencesApi'
+STATS_ENDPOINT = 'StatsApi'
+RANKINGS_ENDPOINT = 'RankingsApi'
+RATINGS_ENDPOINT = 'RatingsApi'
+# Year constants
+CURRENT_YEAR = date.today().year
+LAST_YEAR = CURRENT_YEAR - 1
+STATS_START_YEAR = CURRENT_YEAR - 25  # oldest season to sync (last 26 years inclusive)
 
 def init_api_client(config, endpoint):
   """
@@ -97,25 +106,80 @@ def fetch_teams():
       list — cbbd team objects from the API, or [] on any error.
   """
   try:
-    api_instance = init_api_client(configuration, 'TeamsApi')
-    current_year = date.today().year
-    teams = api_instance.get_teams(season = current_year)
+    api_instance = init_api_client(configuration, TEAMS_ENDPOINT)
+    teams = api_instance.get_teams(season = CURRENT_YEAR)
     return teams
-
   except cbbd.ApiException as exc:
     # API returned an error status code (401, 403, 429, 500, etc.)
     logger.error("CBBData API error fetching teams (HTTP %s): %s", exc.status, exc.reason)
     return []
-
   except ConnectionError as exc:
     # Client couldn't be created or the network is unreachable
     logger.error("Connection error fetching teams: %s", exc)
     return []
-
   except ValueError as exc:
     # Bad endpoint name — should never happen unless someone edits the call above
     logger.error("Configuration error in fetch_teams: %s", exc)
     return []
+
+# --- Season Stats Data---
+# Retry / backoff settings for rate-limited API calls.
+MAX_RETRIES     = 4
+RETRY_BASE_DELAY = 5   # seconds — doubles each attempt: 5, 10, 20, 40
+BETWEEN_CALLS_DELAY = 1  # seconds to sleep between successful season fetches
+
+def fetch_season_stats_bulk(season):
+  """
+  Fetch season stats for ALL teams in a single season from the CBBData API.
+
+  One call returns every team's stats for that year — far more efficient
+  than calling the API once per team (~362 calls). The caller loops over
+  seasons (26 calls total) rather than over teams.
+
+  Retries up to MAX_RETRIES times on HTTP 429, using exponential backoff.
+  Respects the Retry-After response header when the API provides it.
+
+  Returns a list of stat objects, or [] if all retries are exhausted.
+  """
+
+  for attempt in range(MAX_RETRIES + 1):
+
+    try:
+      api_instance = init_api_client(configuration, STATS_ENDPOINT)
+      season_stats = api_instance.get_team_season_stats(season=season)
+      return season_stats
+
+    except cbbd.ApiException as exc:
+      if exc.status == 429:
+        if attempt < MAX_RETRIES:
+          # Honor the Retry-After header if present, else use exponential backoff
+          retry_after = None
+          if exc.headers:
+            try:
+              retry_after = int(exc.headers.get('Retry-After', 0)) or None
+            except (ValueError, TypeError):
+              pass
+          wait = retry_after if retry_after else RETRY_BASE_DELAY * (2 ** attempt)
+          logger.warning(
+            "Rate limited on season %s — waiting %ds before retry %d/%d.",
+            season, wait, attempt + 1, MAX_RETRIES
+          )
+          time.sleep(wait)
+          continue  # retry the loop
+        else:
+          logger.error("Rate limited on season %s — max retries exceeded.", season)
+          return []
+      # Non-429 API error — no point retrying
+      logger.error("CBBData API error fetching bulk stats for season %s (HTTP %s): %s", season, exc.status, exc.reason)
+      return []
+
+    except ConnectionError as exc:
+      logger.error("Connection error fetching bulk stats for season %s: %s", season, exc)
+      return []
+
+    except ValueError as exc:
+      logger.error("Configuration error in fetch_season_stats_bulk: %s", exc)
+      return []
 
 # --- Conference Data ---
 def fetch_conferences():
@@ -125,18 +189,15 @@ def fetch_conferences():
   Returns an empty list if the API call fails.
   """
   try:
-    api_instance = init_api_client(configuration, 'ConferencesApi')
+    api_instance = init_api_client(configuration, CONFERENCES_ENDPOINT)
     conferences = api_instance.get_conferences()
     return conferences
-
   except cbbd.ApiException as exc:
     logger.error("CBBData API error fetching conferences (HTTP %s): %s", exc.status, exc.reason)
     return []
-
   except ConnectionError as exc:
     logger.error("Connection error fetching conferences: %s", exc)
     return []
-
   except ValueError as exc:
     logger.error("Configuration error in fetch_conferences: %s", exc)
     return []
@@ -171,41 +232,43 @@ def sync_teams():
     updated_count = 0
     skipped_count = 0
 
-    for team in teams:
-      try:
-        # Convert API object to dictionary
-        team_dict = team.to_dict()
-        # Then create/update the team
-        team_obj, created = Team.objects.update_or_create(
-          id = team_dict['id'],  # lookup — how Django finds the existing record
-          defaults = {  # everything to set/update on that record
-            'source_id' : team_dict.get('sourceId'),
-            'school' : team_dict.get('school', ''),
-            'abbrv' : team_dict.get('abbreviation', ''),
-            'display_name' : team_dict.get('displayName', ''),
-            'short_display_name' : team_dict.get('shortDisplayName', ''),
-            'mascot' : team_dict.get('mascot', ''),
-            'primary_color' : team_dict.get('primaryColor', ''),
-            'secondary_color' : team_dict.get('secondaryColor', ''),
-            'current_venue_id' : team_dict.get('currentVenueId'),
-            'current_venue_name' : team_dict.get('currentVenue', ''),
-            'current_city' : team_dict.get('currentCity', ''),
-            'current_state' : team_dict.get('currentState', ''),
-            # Raw API integer ID — kept for reference. The ForeignKey (conference)
-            # is linked separately once sync_conferences() has run.
-            'api_conference_id' : team_dict.get('conferenceId'),
-          }
-        )
-        if created:
+    with logging_redirect_tqdm():
+      for team in tqdm(teams, desc='Syncing teams', unit='team', ncols=80):
+        try:
+          # Convert API object to dictionary
+          team_dict = team.to_dict()
+          # Then create/update the team
+          team_obj, created = Team.objects.update_or_create(
+            id = team_dict['id'],  # lookup — how Django finds the existing record
+            defaults = {  # everything to set/update on that record
+              'source_id' : team_dict.get('sourceId'),
+              'school' : team_dict.get('school', ''),
+              'abbrv' : team_dict.get('abbreviation', ''),
+              'display_name' : team_dict.get('displayName', ''),
+              'short_display_name' : team_dict.get('shortDisplayName', ''),
+              'mascot' : team_dict.get('mascot', ''),
+              'primary_color' : team_dict.get('primaryColor', ''),
+              'secondary_color' : team_dict.get('secondaryColor', ''),
+              'current_venue_id' : team_dict.get('currentVenueId'),
+              'current_venue_name' : team_dict.get('currentVenue', ''),
+              'current_city' : team_dict.get('currentCity', ''),
+              'current_state' : team_dict.get('currentState', ''),
+              # Raw API integer ID — kept for reference. The ForeignKey (conference)
+              # is linked separately once sync_conferences() has run.
+              'api_conference_id' : team_dict.get('conferenceId'),
+            }
+          )
+          if created:
             created_count += 1
-        else:
+          else:
             updated_count += 1
 
-      except (IntegrityError, KeyError) as exc:
-        # IntegrityError — slug collision or NOT NULL violation on a required field
-        # KeyError — API response missing the 'id' key entirely
-        skipped_count += 1
-        logger.warning("Skipped team (id=%s): %s", team_dict.get('id', '?'), exc)
+        except (IntegrityError, KeyError) as exc:
+          # IntegrityError — slug collision or NOT NULL violation on a required field
+          # KeyError — API response missing the 'id' key entirely
+          skipped_count += 1
+          logger.warning("Skipped team (id=%s): %s", team_dict.get('id', '?'), exc)
+          continue
 
     # Summary line so the management command gives clear feedback
     logger.info(
@@ -248,6 +311,7 @@ def sync_conferences():
     except (IntegrityError, KeyError) as exc:
       skipped_count += 1
       logger.warning("Skipped conference (id=%s): %s", conf_dict.get('id', '?'), exc)
+
   # Link each team's conference FK using the raw api_conference_id
   for team in Team.objects.filter(conference__isnull = True, api_conference_id__isnull = False) :
     try :
@@ -259,4 +323,147 @@ def sync_conferences():
   logger.info(
     "sync_conferences complete — %d created, %d updated, %d skipped (of %d total).",
     created_count, updated_count, skipped_count, len(conferences)
+  )
+
+def sync_all_season_stats():
+  """
+  Sync stats for every team across the last 26 seasons.
+
+  Makes one API call per season (26 total) instead of one per team (~362).
+  Each season response contains all teams — rows are matched to Team objects
+  via school name rather than the stats API's teamId, which can differ from
+  the teams API's id and cause FK constraint failures.
+
+  Called as a separate step in the sync_data management command, after
+  sync_teams() has already populated the teams table.
+  """
+  # Build a school-name -> Team lookup once before the outer loop.
+  # Lower-cased for case-insensitive matching against API response values.
+  team_lookup = {t.school.lower(): t for t in Team.objects.all()}
+  if not team_lookup:
+    logger.warning("sync_all_season_stats: no teams found — run sync_teams first.")
+    return
+
+  seasons = range(STATS_START_YEAR, CURRENT_YEAR + 1)
+  created_count = 0
+  updated_count = 0
+  skipped_count = 0   # DB errors only
+  ignored_count = 0   # non-D1 programs not in our team table
+
+  with logging_redirect_tqdm():
+    for season in tqdm(seasons, desc='Syncing season stats', unit='season', ncols=80):
+      season_stats = fetch_season_stats_bulk(season)
+      # Polite pause before the next API call, guards against hitting the API rate limit.
+      time.sleep(BETWEEN_CALLS_DELAY)
+      if not season_stats:
+        logger.warning("No stats returned for season %s — skipping.", season)
+        continue
+
+      for season_stat in season_stats:
+        # Keys use camelCase aliases (e.g. 'teamStats', 'fieldGoals', 'teamId')
+        team_stat_dict = season_stat.to_dict()
+        # Resolve FK via school name — more reliable than the API's teamId.
+        school = (team_stat_dict.get('team') or '').lower()
+        team_obj = team_lookup.get(school)
+        if team_obj is None:
+          ignored_count += 1
+          # Non-D1 programs appear in bulk responses but aren't in our team table — expected, not an error.
+          logger.debug("Ignoring non-D1 school '%s' in season %s.", school, season)
+          continue
+
+        # Offensive and opponent stat blocks (already plain dicts)
+        stat_dict     = team_stat_dict.get('teamStats', {})
+        opp_stat_dict = team_stat_dict.get('opponentStats', {})
+        # Offensive sub-dicts
+        fg_dict           = stat_dict.get('fieldGoals', {})
+        fg_2pt_dict       = stat_dict.get('twoPointFieldGoals', {})
+        fg_3pt_dict       = stat_dict.get('threePointFieldGoals', {})
+        ft_dict           = stat_dict.get('freeThrows', {})
+        points_dict       = stat_dict.get('points', {})
+        rebounds_dict     = stat_dict.get('rebounds', {})
+        turnovers_dict    = stat_dict.get('turnovers', {})
+        four_factors_dict = stat_dict.get('fourFactors', {})
+        # Opponent sub-dicts
+        opp_fg_dict           = opp_stat_dict.get('fieldGoals', {})
+        opp_2pt_dict          = opp_stat_dict.get('twoPointFieldGoals', {})
+        opp_3pt_dict          = opp_stat_dict.get('threePointFieldGoals', {})
+        opp_ft_dict           = opp_stat_dict.get('freeThrows', {})
+        opp_points_dict       = opp_stat_dict.get('points', {})
+        opp_rebounds_dict     = opp_stat_dict.get('rebounds', {})
+        opp_turnovers_dict    = opp_stat_dict.get('turnovers', {})
+        opp_four_factors_dict = opp_stat_dict.get('fourFactors', {})
+
+        try:
+          stat_obj, created = TeamSeasonStats.objects.update_or_create(
+            # Lookup — must match unique_together = ('team', 'season').
+            team_id = team_obj.id,
+            season  = team_stat_dict.get('season'),
+            defaults = {
+              'season_label' : team_stat_dict.get('seasonLabel'),
+              'games'        : team_stat_dict.get('games'),
+              'wins'         : team_stat_dict.get('wins'),
+              'losses'       : team_stat_dict.get('losses'),
+              'total_minutes': team_stat_dict.get('totalMinutes'),
+              'pace'         : team_stat_dict.get('pace'),
+              # --- Offensive shooting ---
+              'off_fg_made'      : fg_dict.get('made'),
+              'off_fg_attempted' : fg_dict.get('attempted'),
+              'off_fg_pct'       : fg_dict.get('pct'),
+              'off_2pt_made'     : fg_2pt_dict.get('made'),
+              'off_2pt_attempted': fg_2pt_dict.get('attempted'),
+              'off_2pt_pct'      : fg_2pt_dict.get('pct'),
+              'off_3pt_made'     : fg_3pt_dict.get('made'),
+              'off_3pt_attempted': fg_3pt_dict.get('attempted'),
+              'off_3pt_pct'      : fg_3pt_dict.get('pct'),
+              'off_ft_made'      : ft_dict.get('made'),
+              'off_ft_attempted' : ft_dict.get('attempted'),
+              'off_ft_pct'       : ft_dict.get('pct'),
+              # --- Offensive counting stats ---
+              'off_points'   : points_dict.get('total'),
+              'off_assists'  : stat_dict.get('assists'),
+              'off_steals'   : stat_dict.get('steals'),
+              'off_blocks'   : stat_dict.get('blocks'),
+              'off_turnovers': turnovers_dict.get('total'),
+              # --- Offensive rebounds ---
+              'off_reb_total'    : rebounds_dict.get('total'),
+              'off_reb_offensive': rebounds_dict.get('offensive'),
+              'off_reb_defensive': rebounds_dict.get('defensive'),
+              # --- Offensive four factors (advanced) ---
+              'off_eff_fg_pct'    : four_factors_dict.get('effectiveFieldGoalPct'),
+              'off_ft_rate'       : four_factors_dict.get('freeThrowRate'),
+              'off_oreb_pct'      : four_factors_dict.get('offensiveReboundPct'),
+              'off_turnover_ratio': four_factors_dict.get('turnoverRatio'),
+              'off_true_shooting' : stat_dict.get('trueShooting'),
+              'off_rating'        : stat_dict.get('rating'),
+              'off_possessions'   : stat_dict.get('possessions'),
+              # --- Opponent / defensive stats ---
+              'opp_fg_pct'        : opp_fg_dict.get('pct'),
+              'opp_2pt_pct'       : opp_2pt_dict.get('pct'),
+              'opp_3pt_pct'       : opp_3pt_dict.get('pct'),
+              'opp_ft_pct'        : opp_ft_dict.get('pct'),
+              'opp_points'        : opp_points_dict.get('total'),
+              'opp_assists'       : opp_stat_dict.get('assists'),
+              'opp_turnovers'     : opp_turnovers_dict.get('total'),
+              'opp_reb_total'     : opp_rebounds_dict.get('total'),
+              'opp_reb_offensive' : opp_rebounds_dict.get('offensive'),
+              'opp_eff_fg_pct'    : opp_four_factors_dict.get('effectiveFieldGoalPct'),
+              'opp_ft_rate'       : opp_four_factors_dict.get('freeThrowRate'),
+              'opp_turnover_ratio': opp_four_factors_dict.get('turnoverRatio'),
+              'opp_true_shooting' : opp_stat_dict.get('trueShooting'),
+              'opp_rating'        : opp_stat_dict.get('rating'),
+            }
+          )
+
+          if created:
+            created_count += 1
+          else:
+            updated_count += 1
+
+        except (IntegrityError, KeyError) as exc:
+          skipped_count += 1
+          logger.warning("Failed to upsert stats for '%s' season %s: %s", school, season, exc)
+
+  logger.info(
+    "sync_all_season_stats complete — %d created, %d updated, %d skipped, %d non-D1 ignored (across %d seasons).",
+    created_count, updated_count, skipped_count, ignored_count, len(seasons)
   )
