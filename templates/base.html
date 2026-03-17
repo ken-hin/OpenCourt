@@ -60,17 +60,17 @@
     <!-- Footer will be built here -->
   </footer>
 
-  <!--
+  {% block extra_js %}
+    <!--
       ApexCharts — an interactive chart library used for all data visualizations.
       To render a chart, target a <div id="chart"> in your template and initialize
       it in a page-specific script block. Loaded globally since most pages will
       display stats. Full docs: https://apexcharts.com/docs/installation/
-  -->
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-  <!-- Global JS — utility functions shared across all pages -->
-  <script src="{% static 'js/main.js' %}"></script>
-
-  {% block extra_js %}{% endblock %}
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <!-- Global JS — utility functions shared across all pages -->
+    <script src="{% static 'js/main.js' %}"></script>
+  {% endblock %}
 
 </body>
 </html>

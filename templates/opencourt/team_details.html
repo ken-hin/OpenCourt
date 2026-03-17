@@ -1,11 +1,173 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}{{ team.display_name }}{% endblock %}
+
+{% block title %}{{ team.display_name }} — OpenCourt{% endblock %}
 
 {% block content %}
+<div class="pt-20 px-10">
+  <h1 class="text-3xl font-bold mb-1">{{ team.display_name }}</h1>
+  <p class="text-sm text-gray-500 mb-8">{{ team.conference }} · {{ team.current_city }}, {{ team.current_state }}</p>
 
-  <div class="container mx-auto py-15">
-    <h1>{{ team.display_name }}</h1>
+  <!-- Main charts row -->
+  <div class="grid grid-cols-4 gap-4 mb-8">
+    <div class="card bg-base-200 col-start-1 col-end-3 p-4">
+      <div id="line-adwords"></div>
+    </div>
+    <div class="card bg-base-200 col-start-3 p-4">
+      <div id="radialBarBottom"></div>
+    </div>
   </div>
 
+  <!-- Bottom charts row -->
+  <div class="grid grid-cols-2 gap-4 mb-8">
+    <div class="card bg-base-200 p-4">
+      <div id="barchart"></div>
+    </div>
+    <div class="card bg-base-200 p-4">
+      <div id="areachart"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+  <script>
+    // -------------------------------------------------------------------------
+    // Chart data — injected directly from Django context via {{ var|safe }}.
+    // -------------------------------------------------------------------------
+    const years = {{ stat_years|safe }};
+    const winPct = {{ win_pct|safe }};
+    const offRtg = {{ off_rtg|safe }};
+    const oppRtg = {{ opp_rtg|safe }};
+    const threePct = {{ 3pt_pct|safe }};
+    const effFg = {{ eff_fg|safe }};
+    const TO_ratio = {{ to_ratio|safe }};
+    const oreb_pct = {{ oreb_pct|safe }};
+    const ft_rate = {{ ft_rate|safe }};
+    const offPts = {{ off_pts|safe }};
+    const oppPts = {{ opp_pts|safe }};
+    const wins = {{ wins|safe }};
+    const losses = {{ losses|safe }};
+
+    // -------------------------------------------------------------------------
+    // Global ApexCharts defaults — applied to every chart on this page.
+    // -------------------------------------------------------------------------
+    window.Apex = {
+      chart: {
+        toolbar: { show: false },
+        fontFamily: 'inherit',
+
+      },
+      stroke: { width: 6 },
+      dataLabels: { enabled: false },
+      tooltip: { theme: 'dark' },
+      grid: {
+        borderColor: '#e5e7eb',
+        xaxis: { lines: { show: false } },
+      },
+    };
+    // -------------------------------------------------------------------------
+    // Line — Points scored vs points allowed per game over time
+    // -------------------------------------------------------------------------
+    new ApexCharts(document.querySelector('#line-adwords'), {
+      chart: { type: 'line', height: 300 },
+      series: [
+        { name: 'Points Scored',  data: offPts,  },
+        { name: 'Points Allowed', data: oppPts },
+      ],
+      stroke: { curve: 'smooth', width: 2 },
+      xaxis: { categories: years, tickAmount: 6, tooltip: { enabled: false }, labels: { style: { colors: '#b2ccd6' }} },
+      yaxis: { title: { text: 'Pts / Game', style: { color: '#b2ccd6' } }, decimalsInFloat: 1, labels: { style: { colors: '#b2ccd6' }} },
+      title: { text: 'Points Per Game', align: 'left', style: { color: '#b2ccd6'} },
+      legend: { position: 'top', horizontalAlign: 'right', labels: { colors: '#b2ccd6' } },
+      colors: ['#6366f1', '#ef4444'],
+    }).render();
+
+    // -------------------------------------------------------------------------
+    // Radial bar — latest season shooting efficiency snapshot
+    // -------------------------------------------------------------------------
+    const chart_effFg      = effFg.filter(Boolean).at(-1)    ?? 0;
+    const chart_to_ratio   = TO_ratio.filter(Boolean).at(-1) ?? 0;
+    const chart_oreb_pct   = oreb_pct.filter(Boolean).at(-1) ?? 0;
+    const chart_ft_rate    = ft_rate.filter(Boolean).at(-1)  ?? 0;
+
+    new ApexCharts(document.querySelector('#radialBarBottom'), {
+      chart: { type: 'radialBar', height: 350 },
+      series: [chart_effFg, chart_to_ratio, chart_oreb_pct, chart_ft_rate],
+      labels: ['eFG%', 'TOV%', 'OR%', 'FTRate'],
+      plotOptions: {
+        radialBar: {
+          hollow: { size: '40%' },
+          track: { show: true },
+          startAngle: -180,
+          endAngle: 180,
+          dataLabels: {
+            name: { fontSize: '16px' },
+            value: { fontSize: '16px', color: '#b2ccd6' },
+          },
+        },
+      },
+      title: { text: 'Four Factors', align: 'left', style: { color: '#b2ccd6'} },
+    }).render();
+
+    // -------------------------------------------------------------------------
+    // Bar — wins vs losses per season
+    // -------------------------------------------------------------------------
+    new ApexCharts(document.querySelector('#barchart'), {
+      chart: { type: 'bar', height: 320, stacked: true },
+      series: [
+        { name: 'Wins',   data: wins },
+        { name: 'Losses', data: losses },
+      ],
+      xaxis: { categories: years, tickAmount: 8, labels: { style: { colors: '#b2ccd6' } }},
+      yaxis: { title: { text: 'Games', style: { color: '#b2ccd6' }}, labels: { style: {colors: '#b2ccd6'} } },
+      plotOptions: { bar: { columnWidth: '60%' } },
+      colors: ['#10b981', '#ef4444'],
+      title: { text: 'Wins & Losses', align: 'left', style: { color: '#b2ccd6'} },
+      legend: { position: 'top', horizontalAlign: 'right', labels: { colors: '#b2ccd6'} },
+    }).render();
+
+    // -------------------------------------------------------------------------
+    // Area — offensive vs defensive rating over time
+    // -------------------------------------------------------------------------
+    new ApexCharts(document.querySelector('#areachart'), {
+      chart: { type: 'area', height: 320 },
+      series: [
+        { name: 'Off Rating', data: offRtg },
+        { name: 'Opp Rating', data: oppRtg },
+      ],
+      stroke: { curve: 'smooth', width: 2 },
+      fill: { opacity: 0.15 },
+      xaxis: {
+        categories: years,
+        tickAmount: 6,
+        tooltip: { enabled: false },
+        labels: {
+          style: { colors: '#b2ccd6' }
+        }
+      },
+      yaxis: {
+        title: {
+          text: 'Rating',
+          style: { color: '#b2ccd6'}
+        },
+        decimalsInFloat: 1,
+        labels: {
+          style: { colors: '#b2ccd6' }
+        }
+      },
+      title: {
+        text: 'Offensive vs Defensive Rating',
+        align: 'left',
+        style: { color: '#b2ccd6'}
+      },
+      legend: {
+        position: 'top',
+        horizontalAlign: 'right',
+        labels: { colors: '#b2ccd6' }
+      },
+      colors: ['#6366f1', '#ef4444'],
+    }).render();
+  </script>
 {% endblock %}

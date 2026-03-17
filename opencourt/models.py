@@ -6,6 +6,7 @@
 
 from django.db import models
 from django.utils.text import slugify
+from .stats import win_percentage
 
 class Team(models.Model):
   """
@@ -47,7 +48,6 @@ class Team(models.Model):
     on_delete = models.SET_NULL,  # if a conference is deleted, don't delete its teams
     related_name = 'teams',       # enables conference.teams.all()
   )
-
   def save(self, *args, **kwargs):
     """
     Override save to auto-generate a URL slug on the first creation.
@@ -82,3 +82,96 @@ class Conference(models.Model):
 
   def __str__(self):
     return self.abbrv
+
+class TeamSeasonStats(models.Model) :
+  """
+  Season-level statistics for a single team, sourced from the CBBData API.
+  Covers one row per team per season. Both offensive (off_) and opponent/
+  defensive (opp_) stats are stored flat so dashboards can compare them
+  without a join.
+
+  Lookup key: (team, season) — enforced by unique_together below.
+  Synced by sync_team_stats() in services.py.
+  """
+
+  # --- Identity ---
+  team = models.ForeignKey('Team', on_delete = models.CASCADE, related_name = 'season_stats')
+  season = models.IntegerField()  # e.g. 2024
+  season_label = models.CharField(max_length = 20)  # e.g. "2024-25"
+
+  # --- Game totals ---
+  games = models.IntegerField(null = True, blank = True)
+  wins = models.FloatField(null = True, blank = True)
+  losses = models.FloatField(null = True, blank = True)
+  win_pct = models.FloatField(null = True, blank = True)
+
+  # --- Pace / tempo ---
+  pace = models.FloatField(null = True, blank = True)  # possessions per 40 min
+  total_minutes = models.FloatField(null = True, blank = True)
+
+  # --- Offensive shooting ---
+  off_fg_made = models.FloatField(null = True, blank = True)
+  off_fg_attempted = models.FloatField(null = True, blank = True)
+  off_fg_pct = models.FloatField(null = True, blank = True)
+
+  off_2pt_made = models.FloatField(null = True, blank = True)
+  off_2pt_attempted = models.FloatField(null = True, blank = True)
+  off_2pt_pct = models.FloatField(null = True, blank = True)
+
+  off_3pt_made = models.FloatField(null = True, blank = True)
+  off_3pt_attempted = models.FloatField(null = True, blank = True)
+  off_3pt_pct = models.FloatField(null = True, blank = True)
+
+  off_ft_made = models.FloatField(null = True, blank = True)
+  off_ft_attempted = models.FloatField(null = True, blank = True)
+  off_ft_pct = models.FloatField(null = True, blank = True)
+
+  # --- Offensive counting stats ---
+  off_points = models.FloatField(null = True, blank = True)
+  off_assists = models.FloatField(null = True, blank = True)
+  off_steals = models.FloatField(null = True, blank = True)
+  off_blocks = models.FloatField(null = True, blank = True)
+  off_turnovers = models.FloatField(null = True, blank = True)
+
+  # --- Offensive rebounds ---
+  off_reb_total = models.FloatField(null = True, blank = True)
+  off_reb_offensive = models.FloatField(null = True, blank = True)
+  off_reb_defensive = models.FloatField(null = True, blank = True)
+
+  # --- Offensive four factors (advanced) ---
+  off_eff_fg_pct = models.FloatField(null = True, blank = True)  # effective FG%
+  off_ft_rate = models.FloatField(null = True, blank = True)  # FT attempts / FG attempts
+  off_oreb_pct = models.FloatField(null = True, blank = True)  # offensive rebound %
+  off_turnover_ratio = models.FloatField(null = True, blank = True)  # turnovers per 100 possessions
+  off_true_shooting = models.FloatField(null = True, blank = True)  # TS%
+  off_rating = models.FloatField(null = True, blank = True)  # points per 100 possessions
+  off_possessions = models.FloatField(null = True, blank = True)
+
+  # --- Opponent / defensive stats (same shape, opp_ prefix) ---
+  opp_fg_pct = models.FloatField(null = True, blank = True)
+  opp_2pt_pct = models.FloatField(null = True, blank = True)
+  opp_3pt_pct = models.FloatField(null = True, blank = True)
+  opp_ft_pct = models.FloatField(null = True, blank = True)
+  opp_points = models.FloatField(null = True, blank = True)
+  opp_assists = models.FloatField(null = True, blank = True)
+  opp_turnovers = models.FloatField(null = True, blank = True)
+  opp_reb_total = models.FloatField(null = True, blank = True)
+  opp_reb_offensive = models.FloatField(null = True, blank = True)
+  opp_eff_fg_pct = models.FloatField(null = True, blank = True)
+  opp_ft_rate = models.FloatField(null = True, blank = True)
+  opp_turnover_ratio = models.FloatField(null = True, blank = True)
+  opp_true_shooting = models.FloatField(null = True, blank = True)
+  opp_rating = models.FloatField(null = True, blank = True)  # defensive rating
+
+  def save(self, *args, **kwargs) :
+
+    self.win_pct = win_percentage(self.wins, self.losses)
+
+    super().save(*args, **kwargs)
+
+  class Meta :
+    unique_together = ('team', 'season')
+    ordering = ['-season']
+
+  def __str__(self) :
+    return f"{self.team} — {self.season_label}"

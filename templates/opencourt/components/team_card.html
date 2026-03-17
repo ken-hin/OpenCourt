@@ -1,19 +1,22 @@
-<div class="card-body items-center -m-2">
-  <!-- Team Info Dropdown -->
-  <div class="card-actions w-full">
-    <div class="dropdown dropdown-center grow justify-start">
-      <div tabindex="{{ team.id }}" role="button" class="btn flex justify-start btn-soft w-full border-none bg-transparent">
-        <h2 class="card-title text-2xl">{{ team.school }}</h2>
-      </div>
-      <!-- Team Info Dropdown Card -->
-      <div class="dropdown-content card w-sm z-10 shadow-2xl bg-transparent backdrop-blur-3xl">
-        <div class="card-body">
-          <h3 class="card-title">Overview</h3>
-          <h2>Conference: {{ team.conference.abbrv }}</h2>
-          <h2>Location: {{ team.current_city|capfirst }}, {{ team.current_state|upper }}</h2>
-          <a href="{% url 'opencourt:team-detail' team.slug %}" class="btn" style="background: #{{ team.primary_color }}CC">View Details</a>
-        </div>
+<!-- Team Card -->
+<div class="card w-72" style="background-color: #{{ team.primary_color }}CC;">
+  <div class="card-body justify-between align-middle" style="flex-direction: row" tabindex="{{ team.id }}">
+    <!-- Team Info Dropdown -->
+    <div class="card-title text-2xl">
+      <h1>{{ team.school }}</h1>
+    </div>
+    <div class="justify-end">
+      <div class="btn btn-ghost bg-transparent border-none">
+        <i class="fa-solid fa-angle-right fa-lg"></i>
       </div>
     </div>
   </div>
 </div>
+<!-- Extra divs for 3D card hover effect, dont remove -->
+<div></div>
+<div></div>
+<div></div>
+<div></div>
+<div></div>
+<div></div>
+<div></div>

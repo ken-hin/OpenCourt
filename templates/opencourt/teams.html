@@ -4,10 +4,10 @@
 
 {% block content %}
 
+  <!-- Search/Filtering -->
   <div class="container mx-auto py-15">
-    <!-- Search/Filtering -->
     <div class="flex flex-col gap-4 my-7 mx-15 content-stretch">
-      <!-- Search bar -->
+      <!-- Search bar: Need to implement actual search functionality -->
       <div class="join flex items-center">
         <label class="input join-item grow-4">
           <input type="search" placeholder="Search" />
@@ -18,46 +18,58 @@
       </div>
       <!-- Conference Filter -->
       <div>
-        <form class="flex items-center gap-2 conf-filter grow-4">
-          <input class="btn filter-btn" type="checkbox" name="conference" data-target="acc-section" aria-label="ACC"/>
-          <input class="btn filter-btn" type="checkbox" name="conference" data-target="big10-section" aria-label="Big 10"/>
-          <input class="btn filter-btn" type="checkbox" name="conference" data-target="big12-section" aria-label="Big 12"/>
-          <input class="btn filter-btn" type="checkbox" name="conference" data-target="big-east-section" aria-label="Big East"/>
-          <input class="btn filter-btn" type="checkbox" name="conference" data-target="sec-section" aria-label="SEC"/>
-          <input class="btn btn-square btn-md" type="reset" value="x"/>
-        </form>
+        <div class="dropdown dropdown-right">
+          <div tabindex="0" role="button" class="btn btn-neutral m-1">
+            <a class="text-lg">Filter by Conference</a>
+          </div>
+          <div tabindex="0" class="dropdown-content menu pl-8">
+            <form class="flex items-center gap-2 conf-filter grow-4 justify-center">
+              <input class="btn filter-btn" type="checkbox" name="conference" data-target="acc-section" aria-label="ACC"/>
+              <input class="btn filter-btn" type="checkbox" name="conference" data-target="big10-section" aria-label="Big 10"/>
+              <input class="btn filter-btn" type="checkbox" name="conference" data-target="big12-section" aria-label="Big 12"/>
+              <input class="btn filter-btn" type="checkbox" name="conference" data-target="big-east-section" aria-label="Big East"/>
+              <input class="btn filter-btn" type="checkbox" name="conference" data-target="sec-section" aria-label="SEC"/>
+              <input class="btn btn-square" type="reset" value="x"/>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
+
     <!-- Team Cards -->
-    <div class="flex flex-wrap gap-x-7 gap-y-5 -mx-7 justify-center">
+    <div class="flex flex-wrap gap-4 justify-center">
+
       {% for team in team_list %}
-        <!-- ACC Teams -->
+
         {% if team.conference.slug == 'acc' %}
-          <!-- Team Card -->
-          <div class="card w-sm team-card" id="acc-section" style="background-color: #{{ team.primary_color }}CC;">
-            {% include 'opencourt/components/team_card.html' %}
-          </div>
-        <!-- Big Ten Teams -->
+          <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="acc-section">
+              {% include 'opencourt/components/team_card.html' %}
+          </a>
+
         {% elif team.conference.slug == 'big-ten' %}
-          <div class="card w-sm team-card" id="big10-section" style="background-color: #{{ team.primary_color }}CC;">
-            {% include 'opencourt/components/team_card.html' %}
-          </div>
-        <!-- Big 12 Teams -->
+          <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="big10-section">
+              {% include 'opencourt/components/team_card.html' %}
+          </a>
+
         {% elif team.conference.slug == 'big-12' %}
-          <div class="card w-sm team-card" id="big12-section" style="background-color: #{{ team.primary_color }}CC;">
-            {% include 'opencourt/components/team_card.html' %}
-          </div>
-        <!-- Big East Teams -->
+          <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="big12-section">
+              {% include 'opencourt/components/team_card.html' %}
+          </a>
+
         {% elif team.conference.slug == 'big-east' %}
-          <div class="card w-sm team-card" id="big-east-section" style="background-color: #{{ team.primary_color }}CC;">
-            {% include 'opencourt/components/team_card.html' %}
-          </div>
-        <!-- SEC Teams -->
+          <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="big-east-section">
+              {% include 'opencourt/components/team_card.html' %}
+          </a>
+
         {% elif team.conference.slug == 'sec' %}
-          <div class="card w-sm team-card" id="sec-section" style="background-color: #{{ team.primary_color }}CC;">
-            {% include 'opencourt/components/team_card.html' %}
-          </div>
-        {% else %}{% endif %}{% endfor %}
+          <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="sec-section">
+              {% include 'opencourt/components/team_card.html' %}
+          </a>
+        {% else %}
+
+        {% endif %}
+
+      {% endfor %}
     </div>
 
   </div>
