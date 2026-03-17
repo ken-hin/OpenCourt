@@ -34,6 +34,14 @@ class ConferenceListView(ListView):
     def get_queryset(self):
       return Conference.objects.all()
 
+class RankingsListView(ListView):
+    """ Renders the rankings page."""
+    model = Team
+    template_name = 'opencourt/rankings.html'
+
+    def get_queryset(self):
+      return Team.objects.all()
+
 class TeamDetailView(TemplateView):
     """Renders the team detail page with season stats and chart data."""
     template_name = 'opencourt/team_details.html'
