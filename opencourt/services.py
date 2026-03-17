@@ -45,7 +45,7 @@ RATINGS_ENDPOINT = 'RatingsApi'
 # Year constants
 CURRENT_YEAR = date.today().year
 LAST_YEAR = CURRENT_YEAR - 1
-STATS_START_YEAR = CURRENT_YEAR - 25  # oldest season to sync (last 26 years inclusive)
+STATS_START_YEAR = CURRENT_YEAR - 20  # oldest season to sync (last 26 years inclusive)
 
 def init_api_client(config, endpoint):
   """

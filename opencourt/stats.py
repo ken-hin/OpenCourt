@@ -11,11 +11,9 @@ def win_percentage(wins, losses):
     return percent_wins
 
 # Calculates the difference from points scored to points allowed in a single season
-# NOTE: After looking over the api documentation, It appears there is no data for points against,
-# may need to look into further
-# Update (Kenneth): We will need to look at each game and find opponent scoring for points against,
-# Kenneth will need to define a game model to implement this for easy DB lookup
-#def point_differential():
+def point_differential(scored_points, allowed_points):
+  return scored_points - allowed_points
+
 
 # The api has the pace pre-computed in the TeamSeasonStats portion
 # I'll leave this here unless we decide to still calculate our own
