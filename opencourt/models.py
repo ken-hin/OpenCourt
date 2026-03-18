@@ -6,7 +6,7 @@
 
 from django.db import models
 from django.utils.text import slugify
-from .stats import win_percentage
+from .stats import win_percentage, point_differential
 
 class Team(models.Model):
   """
@@ -166,8 +166,14 @@ class TeamSeasonStats(models.Model) :
   def save(self, *args, **kwargs) :
 
     self.win_pct = win_percentage(self.wins, self.losses)
-
     super().save(*args, **kwargs)
+
+  @property
+  def point_margin(self):
+    """Returns the point margin for this season (off_points - opp_points)."""
+    if self.off_points is None or self.opp_points is None:
+      return None
+    return point_differential(self.off_points, self.opp_points)
 
   class Meta :
     unique_together = ('team', 'season')

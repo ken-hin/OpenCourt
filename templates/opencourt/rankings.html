@@ -4,7 +4,199 @@
 
 {% block content %}
 
-  <section class="py-20">
-  <h1>Rankings</h1>
-  </section>
+<!-- Search/Filtering -->
+<div class="container mx-auto py-15">
+  <div class="flex flex-col gap-4 my-7 mx-15 content-stretch">
+    <div class="join flex items-center">
+      <label class="input join-item grow-4">
+        <input class="rankings-search" type="search" placeholder="Search" />
+      </label>
+      <button class="btn btn-neutral join-item grow-0" type="button">
+        <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+      </button>
+    </div>
+
+    <div>
+      <div class="dropdown dropdown-right">
+        <div tabindex="0" role="button" class="btn btn-neutral m-1">
+          <a class="text-lg">Filter by Conference</a>
+        </div>
+        <div tabindex="0" class="dropdown-content menu pl-8">
+          <form class="flex items-center gap-2 conf-filter grow-4 justify-center">
+            <input class="btn filter-btn" type="checkbox" name="conference" data-target="acc" aria-label="ACC"/>
+            <input class="btn filter-btn" type="checkbox" name="conference" data-target="big-ten" aria-label="Big 10"/>
+            <input class="btn filter-btn" type="checkbox" name="conference" data-target="big-12" aria-label="Big 12"/>
+            <input class="btn filter-btn" type="checkbox" name="conference" data-target="big-east" aria-label="Big East"/>
+            <input class="btn filter-btn" type="checkbox" name="conference" data-target="sec" aria-label="SEC"/>
+            <input class="btn btn-square" type="reset" value="x"/>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Rankings List -->
+<div class="flex flex-col mx-15 content-stretch">
+  <div class="overflow-x-auto">
+    <table class="w-full border-collapse">
+
+    <!-- Column Headers -->
+    <thead>
+      <tr class="font-bold text-lg border-b opacity-80">
+        <th class="text-left px-4 py-2 w-16" data-sort-key="rank" data-sort-type="number"># <span class="sort-indicator"></span></th>
+        <th class="text-left px-4 py-2" data-sort-key="team" data-sort-type="string">Team <span class="sort-indicator"></span></th>
+        <th class="text-left px-4 py-2" data-sort-key="conference" data-sort-type="string">Conference <span class="sort-indicator"></span></th>
+        <th class="text-right px-4 py-2" data-sort-key="record" data-sort-type="custom">Record <span class="sort-indicator"></span></th>
+        <th class="text-right px-4 py-2" data-sort-key="total_rebounds" data-sort-type="number">Total Rebounds <span class="sort-indicator"></span></th>
+        <th class="text-right px-4 py-2" data-sort-key="point_margin" data-sort-type="number">Point Margin <span class="sort-indicator"></span></th>
+      </tr>
+    </thead>
+
+    <!-- Team Rows -->
+    <tbody>
+      {% for team in team_list %}
+        <tr
+          id="{{ team.conference.slug }}"
+          class="team-card border-b border-white/5 hover:bg-white/5 transition-all duration-200 cursor-pointer"
+          onclick="window.location='{% url 'opencourt:team-detail' team.slug %}'"
+        >
+          <td class="px-4 py-3 font-bold text-lg w-16">{{ forloop.counter }}</td>
+          <td class="px-4 py-3 font-semibold">{{ team.display_name }}</td>
+          <td class="px-4 py-3 text-sm opacity-70">{{ team.conference.name }}</td>
+          <td class="px-4 py-3 text-right font-medium">
+            {% with stats=team.season_stats.first %}
+              {% if stats %}{{ stats.wins|floatformat:0 }}-{{ stats.losses|floatformat:0 }}{% else %}—{% endif %}
+            {% endwith %}
+          </td>
+          <td class="px-4 py-3 text-right font-medium">
+            {% with stats=team.season_stats.first %}
+              {% if stats %}
+                {% with total_rebs=stats.off_reb_total|add:stats.opp_reb_total %}
+                  {{ total_rebs|floatformat:1 }}
+                {% endwith %}
+              {% else %}—{% endif %}
+            {% endwith %}
+          </td>
+          <td class="px-4 py-3 text-right font-medium">
+            {% if team.latest_point_margin is not None %}
+              {{ team.latest_point_margin|floatformat:1 }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+
+    </table>
+  </div>
+</div>
+
+<script src="{% static 'js/conference_filter.js' %}"></script>
+
+<script>
+  // --- Helpers -------------------------------------------------------------
+  const table = document.querySelector('table');
+  const tbody = table.tBodies[0];
+  const headers = table.querySelectorAll('th[data-sort-key]');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  // Save the original order so we can reset back to it.
+  rows.forEach((row, idx) => (row.dataset.originalOrder = idx));
+
+  const parseNumber = (text) => {
+    const n = parseFloat(text.replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : -Infinity;
+  };
+
+  const comparators = {
+    number: (text) => parseNumber(text),
+    string: (text) => text.toLowerCase(),
+    custom: (text) => {
+      // Record format: "W-L" (e.g. "12-3"). Sort by win pct, then wins.
+      const [w, l] = text.split('-').map(n => parseFloat(n));
+      if (!Number.isFinite(w) || !Number.isFinite(l)) return -Infinity;
+      const pct = w + l > 0 ? w / (w + l) : 0;
+      return pct + w * 0.0001; // tiebreak on more wins
+    },
+  };
+
+  const sortRows = (colIndex, comparator, asc) => {
+    const sorted = [...rows].sort((a, b) => {
+      const aVal = comparator(a.cells[colIndex].textContent.trim());
+      const bVal = comparator(b.cells[colIndex].textContent.trim());
+      if (aVal === bVal) return 0;
+      return asc ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
+    });
+    sorted.forEach(row => tbody.appendChild(row));
+  };
+
+  const restoreOriginalOrder = () => {
+    const sorted = [...rows].sort((a, b) => {
+      return Number(a.dataset.originalOrder) - Number(b.dataset.originalOrder);
+    });
+    sorted.forEach(row => tbody.appendChild(row));
+  };
+
+  // --- Search --------------------------------------------------------------
+  const searchInput = document.querySelector('.rankings-search');
+  const applySearch = () => {
+    const term = (searchInput?.value || '').trim().toLowerCase();
+    rows.forEach(row => {
+      const name = row.querySelector('td:nth-child(2)')?.textContent.trim().toLowerCase() || '';
+      row.style.display = term && !name.includes(term) ? 'none' : '';
+    });
+  };
+
+  if (searchInput) {
+    searchInput.addEventListener('input', applySearch);
+  }
+
+  // --- Sorting -------------------------------------------------------------
+  headers.forEach((header, index) => {
+    header.style.cursor = 'pointer';
+    header.addEventListener('click', () => {
+      const current = header.dataset.sortOrder || '';
+      const next = current === 'asc' ? 'desc' : current === 'desc' ? '' : 'asc';
+      const type = header.dataset.sortType || 'string';
+      const comparator = comparators[type] || comparators.string;
+
+      // Reset all header state
+      headers.forEach(h => {
+        h.dataset.sortOrder = '';
+        const indicator = h.querySelector('.sort-indicator');
+        if (indicator) indicator.textContent = '';
+      });
+
+      if (next === '') {
+        restoreOriginalOrder();
+      } else {
+        const asc = next === 'asc';
+        header.dataset.sortOrder = next;
+        const indicator = header.querySelector('.sort-indicator');
+        if (indicator) indicator.textContent = asc ? ' ▲' : ' ▼';
+        sortRows(index, comparator, asc);
+      }
+
+      applySearch();
+    });
+  });
+</script>
+
+<style>
+  .team-card {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .team-card:hover {
+    transform: scale(1.01);
+  }
+
+  .card-out {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+</style>
+
 {% endblock %}
