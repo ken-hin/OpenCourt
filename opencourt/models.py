@@ -1,115 +1,244 @@
 # models.py — Database models for the opencourt app.
-# Each model maps to a database table.
+#
+# Models define the schema for every table in our SQLite database. Django's ORM
+# maps each class to a table and each field to a column, so the Python you see
+# here IS the source of truth for the DB schema.
+#
 # After adding or changing models, run:
-#   python manage.py makemigrations
-#   python manage.py migrate
+#   python manage.py makemigrations   (generates a migration file describing the change)
+#   python manage.py migrate          (applies the migration to the database)
+#
+# Relationships at a glance:
+#   Conference  1 ── * Team  1 ── * TeamSeasonStats
+#
+#   conference.teams.all()          → all teams in a conference
+#   team.conference                 → the conference a team belongs to
+#   team.season_stats.all()         → every season row for a team
+#   team.current_season             → shortcut property returning the latest season stats object
+#   team.current_season.wins        → a specific stat field on that season
+#
+# Data source:
+#   All three models are populated by management commands that call service
+#   functions in services.py, which hit the CBBData API (https://cbbdata.asmith.uiuc.edu).
+#   Sync order matters: conferences → teams → season stats, because each layer
+#   depends on foreign keys from the layer above.
 
 from django.db import models
 from django.utils.text import slugify
 from .stats import win_percentage
 
+
 class Team(models.Model):
   """
-  Represents a single college basketball team (Division I).
+  Represents a single NCAA Division I men's basketball program.
 
-  Populated by sync_teams() in services.py, which pulls data from the
-  CBBData API and upserts rows using update_or_create(). The `id` field
-  matches the API's primary key, so lookups stay consistent across syncs.
+  One row per school (e.g. Duke, Gonzaga). Populated by the `sync_teams`
+  management command, which calls sync_teams() in services.py. That function
+  pulls the current season's team roster from the CBBData API and upserts
+  rows using update_or_create() keyed on source_id.
 
-  URL-friendly slugs are auto-generated from school + mascot on first save
-  (e.g. "duke-blue-devils") and used for team detail page URLs.
+  Key relationships:
+    team.conference             → Conference object (nullable — set after sync_conferences runs)
+    team.season_stats.all()     → QuerySet of TeamSeasonStats across all synced seasons
+    team.current_season         → property returning the most recent TeamSeasonStats object
+    conference.teams.all()      → reverse lookup from Conference to all its Teams
+
+  URL routing:
+    Each team has a unique slug (e.g. "duke-blue-devils") auto-generated on
+    first save from school + mascot. Used in URL patterns for the team detail
+    page: /teams/<slug>/
   """
 
+  # --- Primary key ---
+  # BigAutoField lets Django manage the PK. We store the API's original ID
+  # separately in source_id so we can match records during sync without
+  # coupling our PK to an external system.
   id = models.BigAutoField(primary_key=True)
   source_id = models.IntegerField(null = True, blank = True)
-  slug = models.SlugField(unique=True)
-  school = models.CharField(max_length=255)
-  abbrv = models.CharField(max_length=255)
-  display_name = models.CharField(max_length=255)
-  short_display_name = models.CharField(max_length=255)
-  mascot = models.CharField(max_length = 100, null = True, blank = True)
+
+  # --- Display / identity ---
+  slug = models.SlugField(unique=True)                                      # URL-safe identifier, e.g. "duke-blue-devils"
+  school = models.CharField(max_length=255)                                 # canonical name, e.g. "Duke"
+  abbrv = models.CharField(max_length=255)                                  # short code, e.g. "DUKE"
+  display_name = models.CharField(max_length=255)                           # full display, e.g. "Duke Blue Devils"
+  short_display_name = models.CharField(max_length=255)                     # compact display, e.g. "Duke"
+  mascot = models.CharField(max_length = 100, null = True, blank = True)    # e.g. "Blue Devils"
+
+  # --- Branding ---
+  # Hex color codes from the API (e.g. "#001A57"). Nullable because some
+  # smaller programs don't have branding data. Useful for theming team
+  # detail pages or chart accent colors.
   primary_color = models.CharField(max_length = 7, null = True, blank = True)
   secondary_color = models.CharField(max_length = 7, null = True, blank = True)
+
+  # --- Venue / location ---
+  # Represents the team's current home arena. These can change year-to-year
+  # (e.g. arena renovations, relocations), so they reflect the most recent
+  # sync rather than historical data.
   current_venue_id = models.IntegerField(null = True, blank = True)
-  current_venue_name = models.CharField(max_length = 200, null = True, blank = True)
+  current_venue_name = models.CharField(max_length = 200, null = True, blank = True)  # e.g. "Cameron Indoor Stadium"
   current_city = models.CharField(max_length = 100, null = True, blank = True)
   current_state = models.CharField(max_length = 50, null = True, blank = True)
-  # Raw integer ID from the CBBData API — kept for reference during syncs.
-  # Django will create its own `conference_id` column for the ForeignKey below,
-  # so this field is renamed to avoid a collision.
+
+  # --- Conference linkage ---
+  # api_conference_id stores the raw integer ID from the CBBData API. We keep
+  # it separate because Django auto-creates a `conference_id` column for the
+  # ForeignKey below, and reusing the same name would cause a collision.
+  # During sync_teams(), we use api_conference_id to look up the matching
+  # Conference object and set the FK.
   api_conference_id = models.IntegerField(null = True, blank = True)
-  # FK to the Conference model — null until sync_conferences() has run and
-  # populated the conferences table. Use team.conference to get the full object,
-  # team.conference_id for the FK integer, conference.teams.all() for the reverse.
   conference = models.ForeignKey(
     'Conference',
     null = True,
     blank = True,
-    on_delete = models.SET_NULL,  # if a conference is deleted, don't delete its teams
+    on_delete = models.SET_NULL,  # keep the team even if its conference is deleted
     related_name = 'teams',       # enables conference.teams.all()
   )
+
+  @property
+  def current_season(self):
+    """
+    Return the TeamSeasonStats object for the current (most recent) season, or None.
+
+    This property supports two access patterns:
+      1. Prefetched (efficient) — when the view uses:
+           Prefetch('teams__season_stats', queryset=..., to_attr='_current_stats')
+         the stats are already loaded in memory; no DB hit.
+      2. Fallback (lazy) — if no prefetch was set up (e.g. Django shell, or a
+         view that didn't optimize), it runs a single query to grab the most
+         recent season by ordering descending.
+
+    Template usage:
+      {{ team.current_season.wins }}
+      {{ team.current_season.off_rating }}
+      {% if team.current_season %} ... {% endif %}
+    """
+    if hasattr(self, '_current_stats'):
+      return self._current_stats[0] if self._current_stats else None
+    return self.season_stats.order_by('-season').first()
+
   def save(self, *args, **kwargs):
     """
-    Override save to auto-generate a URL slug on the first creation.
+    Auto-generate a URL-safe slug on first save if one isn't set.
 
-    Combines school name and mascot (e.g. "Duke" + "Blue Devils" →
-    "duke-blue-devils"). Only runs when the slug is empty, so manually
-    set slugs are preserved.
+    Format: "{school}-{mascot}" → slugified, e.g. "Duke" + "Blue Devils" →
+    "duke-blue-devils". Only runs when slug is empty, so manual overrides
+    are preserved. The slug is used in URL routing (see urls.py).
     """
     if not self.slug:
       self.slug = slugify(f"{self.school}-{self.mascot}")
     super().save(*args, **kwargs)
 
   def __str__(self):
-    """Return the school name (e.g. 'Duke') for admin and shell display."""
     return self.school
 
+
 class Conference(models.Model):
+  """
+  Represents an NCAA Division I basketball conference (e.g. ACC, Big Ten, SEC).
+
+  There are 34 D1 conferences as of 2025-26. Populated by the `sync_conferences`
+  management command, which must run BEFORE sync_teams so that teams can be
+  linked to their conference via ForeignKey.
+
+  Key relationships:
+    conference.teams.all()      → all Team objects in this conference
+    team.conference              → the Conference a team belongs to
+
+  URL routing:
+    Each conference has a unique slug auto-generated from short_name
+    (e.g. "acc", "big-ten"). Used in URL patterns for the conference
+    detail page.
+  """
 
   id = models.BigAutoField(primary_key=True)
-  source_id = models.IntegerField(null = True, blank = True)
-  slug = models.SlugField(unique=True)
-  name = models.CharField(max_length=255)
-  abbrv = models.CharField(max_length=255)
-  short_name = models.CharField(max_length=255)
+  source_id = models.IntegerField(null = True, blank = True)    # original API ID, used for matching during sync
+  slug = models.SlugField(unique=True)                          # URL-safe identifier, e.g. "big-ten"
+  name = models.CharField(max_length=255)                       # full name, e.g. "Big Ten Conference"
+  abbrv = models.CharField(max_length=255)                      # abbreviation, e.g. "B10"
+  short_name = models.CharField(max_length=255)                 # display name, e.g. "Big Ten"
 
   def save(self, *args, **kwargs):
-
+    """Auto-generate slug from short_name on first save (e.g. "Big Ten" → "big-ten")."""
     if not self.slug:
       self.slug = slugify(f"{self.short_name}")
-
     super().save(*args, **kwargs)
 
   def __str__(self):
     return self.abbrv
 
-class TeamSeasonStats(models.Model) :
-  """
-  Season-level statistics for a single team, sourced from the CBBData API.
-  Covers one row per team per season. Both offensive (off_) and opponent/
-  defensive (opp_) stats are stored flat so dashboards can compare them
-  without a join.
 
-  Lookup key: (team, season) — enforced by unique_together below.
-  Synced by sync_team_stats() in services.py.
+class TeamSeasonStats(models.Model):
+  """
+  Season-level aggregate statistics for a single team in a single year.
+
+  One row per team per season (enforced by unique_together). Contains both
+  offensive (off_) and opponent/defensive (opp_) stats stored flat so that
+  dashboards and charts can compare them without joins.
+
+  Populated by the `sync_season_stats` management command, which calls
+  sync_all_season_stats() in services.py. That function fetches stats in
+  bulk per-season (not per-team) to minimize API calls and avoid rate limits.
+  Only the last ~20 seasons are synced (controlled by STATS_START_YEAR in
+  services.py).
+
+  Key relationships:
+    stats.team                  → the Team this row belongs to
+    team.season_stats.all()     → all seasons for a team (ordered newest-first by default)
+    team.current_season         → property shortcut to the most recent season's stats
+
+  Stats glossary:
+    The "Four Factors" (Dean Oliver) are the most predictive indicators of
+    team success in basketball. They're weighted roughly:
+      1. Shooting  (40%) — off_eff_fg_pct: effective FG%, accounts for 3-pointers
+                           being worth more. Formula: (FG + 0.5 * 3P) / FGA
+      2. Turnovers (25%) — off_turnover_ratio: turnovers per 100 possessions.
+                           Lower is better.
+      3. Rebounding (20%) — off_oreb_pct: percentage of available offensive rebounds
+                            grabbed. Higher means more second-chance points.
+      4. Free throws (15%) — off_ft_rate: free throw attempts relative to field goal
+                             attempts (FTA / FGA). Measures ability to get to the line.
+    Source: https://www.basketball-reference.com/about/factors.html
+
+    Efficiency ratings:
+      off_rating — points scored per 100 possessions (offensive efficiency)
+      opp_rating — points allowed per 100 possessions (defensive efficiency)
+      These are tempo-independent, making them better for cross-team comparison
+      than raw points. A good offense is ~110+, a good defense is ~95 or below.
+
+    Pace:
+      Possessions per 40 minutes. Affects raw counting stats (points, rebounds,
+      etc.) but NOT efficiency ratings. Important for predicting game totals.
+
+  Future:
+    This model will serve as the primary feature source for the prediction
+    model. The Four Factors + efficiency ratings are expected to be the
+    strongest input features. Game-level data (not yet modeled) would further
+    improve predictions by enabling matchup-specific features.
   """
 
   # --- Identity ---
-  team = models.ForeignKey('Team', on_delete = models.CASCADE, related_name = 'season_stats')
-  season = models.IntegerField()  # e.g. 2024
-  season_label = models.CharField(max_length = 20)  # e.g. "2024-25"
+  team = models.ForeignKey(
+    'Team',
+    on_delete = models.CASCADE,     # if a team is deleted, remove all its stats too
+    related_name = 'season_stats',  # enables team.season_stats.all()
+  )
+  season = models.IntegerField()                    # the starting year of the season, e.g. 2024 means the 2024-25 season
+  season_label = models.CharField(max_length = 20)  # human-readable label, e.g. "2024-25"
 
   # --- Game totals ---
   games = models.IntegerField(null = True, blank = True)
-  wins = models.FloatField(null = True, blank = True)
+  wins = models.FloatField(null = True, blank = True)     # float because API returns float
   losses = models.FloatField(null = True, blank = True)
-  win_pct = models.FloatField(null = True, blank = True)
+  win_pct = models.FloatField(null = True, blank = True)  # auto-calculated in save(), stored as 0-100
 
   # --- Pace / tempo ---
-  pace = models.FloatField(null = True, blank = True)  # possessions per 40 min
-  total_minutes = models.FloatField(null = True, blank = True)
+  pace = models.FloatField(null = True, blank = True)           # possessions per 40 min — avg is ~68
+  total_minutes = models.FloatField(null = True, blank = True)  # total team minutes played in the season
 
   # --- Offensive shooting ---
+  # Raw makes, attempts, and percentages for each shot type.
+  # Percentages are stored as decimals (e.g. 0.45 = 45%).
   off_fg_made = models.FloatField(null = True, blank = True)
   off_fg_attempted = models.FloatField(null = True, blank = True)
   off_fg_pct = models.FloatField(null = True, blank = True)
@@ -126,28 +255,32 @@ class TeamSeasonStats(models.Model) :
   off_ft_attempted = models.FloatField(null = True, blank = True)
   off_ft_pct = models.FloatField(null = True, blank = True)
 
-  # --- Offensive counting stats ---
+  # --- Offensive counting stats (season totals) ---
   off_points = models.FloatField(null = True, blank = True)
   off_assists = models.FloatField(null = True, blank = True)
   off_steals = models.FloatField(null = True, blank = True)
   off_blocks = models.FloatField(null = True, blank = True)
   off_turnovers = models.FloatField(null = True, blank = True)
 
-  # --- Offensive rebounds ---
-  off_reb_total = models.FloatField(null = True, blank = True)
-  off_reb_offensive = models.FloatField(null = True, blank = True)
-  off_reb_defensive = models.FloatField(null = True, blank = True)
+  # --- Offensive rebounds (season totals) ---
+  off_reb_total = models.FloatField(null = True, blank = True)       # total rebounds
+  off_reb_offensive = models.FloatField(null = True, blank = True)   # offensive boards only
+  off_reb_defensive = models.FloatField(null = True, blank = True)   # defensive boards only
 
-  # --- Offensive four factors (advanced) ---
-  off_eff_fg_pct = models.FloatField(null = True, blank = True)  # effective FG%
-  off_ft_rate = models.FloatField(null = True, blank = True)  # FT attempts / FG attempts
-  off_oreb_pct = models.FloatField(null = True, blank = True)  # offensive rebound %
-  off_turnover_ratio = models.FloatField(null = True, blank = True)  # turnovers per 100 possessions
-  off_true_shooting = models.FloatField(null = True, blank = True)  # TS%
-  off_rating = models.FloatField(null = True, blank = True)  # points per 100 possessions
-  off_possessions = models.FloatField(null = True, blank = True)
+  # --- Offensive Four Factors + advanced metrics ---
+  # These are the core analytics features. See docstring above for definitions.
+  off_eff_fg_pct = models.FloatField(null = True, blank = True)      # effective FG% — (FG + 0.5 * 3P) / FGA
+  off_ft_rate = models.FloatField(null = True, blank = True)         # FTA / FGA — ability to get to the free throw line
+  off_oreb_pct = models.FloatField(null = True, blank = True)        # offensive rebound % — second-chance opportunities
+  off_turnover_ratio = models.FloatField(null = True, blank = True)  # turnovers per 100 possessions — ball security
+  off_true_shooting = models.FloatField(null = True, blank = True)   # TS% — overall shooting efficiency including FTs and 3s
+  off_rating = models.FloatField(null = True, blank = True)          # points per 100 possessions — THE key offensive metric
+  off_possessions = models.FloatField(null = True, blank = True)     # total possessions in the season
 
-  # --- Opponent / defensive stats (same shape, opp_ prefix) ---
+  # --- Opponent / defensive stats ---
+  # Mirror of the offensive stats, but measuring what the OPPONENT did against
+  # this team. Lower values generally mean better defense. The opp_ prefix
+  # fields use the same definitions as their off_ counterparts.
   opp_fg_pct = models.FloatField(null = True, blank = True)
   opp_2pt_pct = models.FloatField(null = True, blank = True)
   opp_3pt_pct = models.FloatField(null = True, blank = True)
@@ -161,17 +294,16 @@ class TeamSeasonStats(models.Model) :
   opp_ft_rate = models.FloatField(null = True, blank = True)
   opp_turnover_ratio = models.FloatField(null = True, blank = True)
   opp_true_shooting = models.FloatField(null = True, blank = True)
-  opp_rating = models.FloatField(null = True, blank = True)  # defensive rating
+  opp_rating = models.FloatField(null = True, blank = True)          # defensive rating — points allowed per 100 possessions
 
-  def save(self, *args, **kwargs) :
-
+  def save(self, *args, **kwargs):
+    """Auto-calculate win_pct before every save using the win_percentage() helper from stats.py."""
     self.win_pct = win_percentage(self.wins, self.losses)
-
     super().save(*args, **kwargs)
 
-  class Meta :
-    unique_together = ('team', 'season')
-    ordering = ['-season']
+  class Meta:
+    unique_together = ('team', 'season')  # one row per team per year — prevents duplicate syncs
+    ordering = ['-season']                # newest season first by default
 
-  def __str__(self) :
+  def __str__(self):
     return f"{self.team} — {self.season_label}"

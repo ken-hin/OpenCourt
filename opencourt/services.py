@@ -1,19 +1,42 @@
-# services.py — External API and data-fetching logic for the opencourt app.
+# services.py — External API communication and database sync logic.
 #
-# This file is the single place for all CBB data API calls and any web scraping.
-# Keeping this separate from views.py means views stay clean and focused on
-# HTTP logic, while all the data-fetching details live here.
+# This module is the bridge between the CBBData API and our Django models.
+# It handles every outbound HTTP call, response parsing, retry logic, and
+# ORM upsert. Views never talk to the API directly — they read from the
+# database, which this module keeps in sync.
 #
-# The `requests` library is already listed in pyproject.toml and installed by `uv sync`.
-# No additional installation step is needed.
+# Architecture:
+#   fetch_*()  functions — pure API calls. Each one hits a single CBBData
+#                          endpoint, handles errors, and returns raw data
+#                          (or [] on failure). No database writes.
+#   sync_*()   functions — orchestration layer. Call the matching fetch_*(),
+#                          then loop through results and upsert into Django
+#                          models via update_or_create().
 #
-# The CBB_API_KEY is read from the .env file (never hardcode it here).
-# See .env.example for setup instructions.
+# Sync order matters — foreign keys create dependencies:
+#   1. sync_conferences()       → populates Conference table
+#   2. sync_teams()             → populates Team table, links FK to Conference
+#   3. sync_all_season_stats()  → populates TeamSeasonStats, links FK to Team
 #
-#   - fetch_teams()       : pull all teams from the CBB API
-#   - fetch_conferences() : pull all conferences
-#   - sync_teams()        : fetch from API and save to the database
-#   - sync_conferences()  : fetch from API and save to the database
+# These are invoked by management commands in opencourt/management/commands/:
+#   python manage.py sync_conferences
+#   python manage.py sync_teams
+#   python manage.py sync_season_stats
+#   python manage.py sync_data          (runs all three in order)
+#
+# API docs & key:
+#   The CBBData API is hosted at https://api.collegebasketballdata.com.
+#   The API key is read from the CBB_API_KEY environment variable (loaded
+#   from .env by django-environ). See .env.example for setup instructions.
+#   NEVER hardcode the key in this file.
+#
+# Rate limiting:
+#   The API enforces rate limits and will return HTTP 429 when exceeded.
+#   The CBBData docs recommend "chunky" (bulk) requests over "chatty"
+#   (per-entity) ones. We follow this: stats are fetched per-season (~26
+#   calls) rather than per-team (~362 calls). Retry with exponential
+#   backoff is built into fetch_season_stats_bulk().
+
 import logging
 import time
 from datetime import date
@@ -24,47 +47,77 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 from django.db import IntegrityError
 from .models import Team, Conference, TeamSeasonStats
 
-# Module-level logger — use `logging.getLogger(__name__)` so log messages
-# are tagged with 'opencourt.services', making them easy to filter in
-# Django's LOGGING config or in the terminal.
+# Module-level logger — tagged as 'opencourt.services' so log messages can
+# be filtered independently in Django's LOGGING config. All sync functions
+# log at INFO level for summary lines, WARNING for recoverable issues
+# (skipped records, rate limits), and ERROR for failures that abort an
+# entire fetch.
 logger = logging.getLogger(__name__)
 
-# --- API Config ---
+
+# =============================================================================
+# API Configuration
+# =============================================================================
+# Shared config object used by every fetch function. The API key is read
+# once at module import time from the environment. Both api_key and
+# access_token are set because the cbbd client uses different auth headers
+# depending on the endpoint.
 configuration = cbbd.Configuration(
   host = "https://api.collegebasketballdata.com",
   api_key = os.environ.get('CBB_API_KEY'),
   access_token = os.environ.get('CBB_API_KEY'),
 )
-# --- Constants ---
-# API endpoints
+
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+# --- API endpoint names ---
+# Passed to init_api_client() to get the right typed client. These match
+# the class names in the cbbd library (e.g. cbbd.TeamsApi).
 TEAMS_ENDPOINT = 'TeamsApi'
 CONFERENCES_ENDPOINT = 'ConferencesApi'
 STATS_ENDPOINT = 'StatsApi'
 RANKINGS_ENDPOINT = 'RankingsApi'
 RATINGS_ENDPOINT = 'RatingsApi'
-# Year constants
+
+# --- Year constants ---
 CURRENT_YEAR = date.today().year
 LAST_YEAR = CURRENT_YEAR - 1
-STATS_START_YEAR = CURRENT_YEAR - 20  # oldest season to sync (last 26 years inclusive)
+STATS_START_YEAR = CURRENT_YEAR - 20  # oldest season to sync — controls how many years of history we keep
+
+# --- Rate limiting / retry ---
+# These control the backoff behavior when the API returns HTTP 429.
+# Delay doubles each attempt: 5s → 10s → 20s → 40s.
+MAX_RETRIES = 4                # max number of retry attempts per API call
+RETRY_BASE_DELAY = 5           # seconds — starting delay, doubled each retry
+BETWEEN_CALLS_DELAY = 1        # seconds to pause between consecutive season fetches
+
+
+# =============================================================================
+# API Client Factory
+# =============================================================================
 
 def init_api_client(config, endpoint):
   """
   Create and return a typed CBBData API client for the given endpoint.
+
   Wraps the shared configuration in an ApiClient, then returns the
   correct endpoint-specific instance (TeamsApi, ConferencesApi, etc.).
-  This keeps the API client setup in one place so fetch functions stay short.
+  Centralizing this means fetch functions don't repeat client setup.
 
   Args:
-      config: cbbd.Configuration — pre-configured with host + API key.
-      endpoint: str — one of 'TeamsApi', 'ConferencesApi', 'StatsApi',
-                'RankingsApi', or 'RatingsApi'.
+      config:   cbbd.Configuration — pre-configured with host + API key.
+      endpoint: str — one of the *_ENDPOINT constants defined above.
+
   Returns:
       The matching cbbd.*Api instance, ready to call .get_*() methods on.
+
   Raises:
-      ValueError: If the endpoint doesn't match any known API class.
-      ConnectionError: If the API client can't be created (bad key, bad host).
+      ValueError:      If the endpoint string doesn't match any known API class.
+      ConnectionError: If the API client can't be created (bad key, network issue).
   """
-  # Catch config-level errors (missing key, bad host) early so they don't surface as cryptic errors inside a fetch function.
   try:
     api_client = cbbd.ApiClient(config)
   except Exception as exc:
@@ -87,59 +140,99 @@ def init_api_client(config, endpoint):
 
   return api_instance
 
-# --- Team Data ---
+
+# =============================================================================
+# Fetch Functions (API → Python objects)
+# =============================================================================
+# Each fetch function makes a single API call and returns raw data. They
+# never touch the database. On any failure they return [] so callers can
+# safely iterate without None-checking.
+#
+# Error handling covers three failure modes consistently:
+#   - cbbd.ApiException: API-level HTTP errors (401, 403, 429, 500, etc.)
+#   - ConnectionError:   network issues (DNS failure, timeout, refused) or
+#                        bad client config
+#   - ValueError:        invalid endpoint name passed to init_api_client()
+
 def fetch_teams():
   """
   Fetch all Division I teams for the current season from the CBBData API.
 
-  Uses the TeamsApi endpoint with the current calendar year as the season
-  parameter. Returns the raw API response (a list of cbbd team objects).
-  Returns an empty list if the API call fails, so callers can safely
-  iterate without checking for None.
-
-  Error handling covers three failure modes:
-    - ValueError: bad endpoint name passed to init_api_client
-    - cbbd.ApiException: API-level errors (401 unauthorized, 403 forbidden, 429 rate limit, 500 server error)
-    - ConnectionError: network issues (DNS failure, timeout, refused)
-
   Returns:
-      list — cbbd team objects from the API, or [] on any error.
+      list — cbbd team objects, or [] on any error.
+
+  Notes:
+      Uses CURRENT_YEAR as the season parameter, so only teams active in
+      the current season are returned. Historically inactive programs won't
+      appear.
   """
   try:
     api_instance = init_api_client(configuration, TEAMS_ENDPOINT)
     teams = api_instance.get_teams(season = CURRENT_YEAR)
     return teams
   except cbbd.ApiException as exc:
-    # API returned an error status code (401, 403, 429, 500, etc.)
     logger.error("CBBData API error fetching teams (HTTP %s): %s", exc.status, exc.reason)
     return []
   except ConnectionError as exc:
-    # Client couldn't be created or the network is unreachable
     logger.error("Connection error fetching teams: %s", exc)
     return []
   except ValueError as exc:
-    # Bad endpoint name — should never happen unless someone edits the call above
     logger.error("Configuration error in fetch_teams: %s", exc)
     return []
 
-# --- Season Stats Data---
-# Retry / backoff settings for rate-limited API calls.
-MAX_RETRIES = 4
-RETRY_BASE_DELAY = 5   # seconds — doubles each attempt: 5, 10, 20, 40
-BETWEEN_CALLS_DELAY = 1  # seconds to sleep between successful season fetches
+
+def fetch_conferences():
+  """
+  Fetch all conferences from the CBBData API.
+
+  Returns:
+      list — cbbd conference objects, or [] on any error.
+
+  Notes:
+      Returns ALL conferences the API knows about, not just D1. The sync
+      function handles filtering downstream.
+  """
+  try:
+    api_instance = init_api_client(configuration, CONFERENCES_ENDPOINT)
+    conferences = api_instance.get_conferences()
+    return conferences
+  except cbbd.ApiException as exc:
+    logger.error("CBBData API error fetching conferences (HTTP %s): %s", exc.status, exc.reason)
+    return []
+  except ConnectionError as exc:
+    logger.error("Connection error fetching conferences: %s", exc)
+    return []
+  except ValueError as exc:
+    logger.error("Configuration error in fetch_conferences: %s", exc)
+    return []
+
 
 def fetch_season_stats_bulk(season):
   """
   Fetch season stats for ALL teams in a single season from the CBBData API.
 
-  One call returns every team's stats for that year — far more efficient
-  than calling the API once per team (~362 calls). The caller loops over
-  seasons (26 calls total) rather than over teams.
+  This is the "chunky" approach recommended by CBBData docs: one call per
+  season returns every team's aggregate stats for that year. The caller
+  loops over seasons (~20 calls) rather than over teams (~362 calls).
 
-  Retries up to MAX_RETRIES times on HTTP 429, using exponential backoff.
-  Respects the Retry-After response header when the API provides it.
+  Includes built-in retry with exponential backoff for HTTP 429 responses.
+  The Retry-After header is honored when the API provides it; otherwise
+  the delay doubles each attempt (5s → 10s → 20s → 40s).
 
-  Returns a list of stat objects, or [] if all retries are exhausted.
+  Args:
+      season: int — the season year to fetch (e.g. 2024 for the 2024-25 season).
+
+  Returns:
+      list — cbbd stat objects for every team in that season, or [] if all
+             retries are exhausted or a non-retryable error occurs.
+
+  Retry behavior:
+      Attempt 0: immediate
+      Attempt 1: wait 5s  (or Retry-After)
+      Attempt 2: wait 10s (or Retry-After)
+      Attempt 3: wait 20s (or Retry-After)
+      Attempt 4: wait 40s (or Retry-After)
+      After attempt 4: give up, return []
   """
 
   for attempt in range(MAX_RETRIES + 1):
@@ -184,53 +277,45 @@ def fetch_season_stats_bulk(season):
       logger.error("Configuration error in fetch_season_stats_bulk: %s", exc)
       return []
 
-# --- Conference Data ---
-def fetch_conferences():
-  """
-  Fetch all conferences from the CBBData API.
-  Returns the raw API response (a list of cbbd conference objects).
-  Returns an empty list if the API call fails.
-  """
-  try:
-    api_instance = init_api_client(configuration, CONFERENCES_ENDPOINT)
-    conferences = api_instance.get_conferences()
-    return conferences
-  except cbbd.ApiException as exc:
-    logger.error("CBBData API error fetching conferences (HTTP %s): %s", exc.status, exc.reason)
-    return []
-  except ConnectionError as exc:
-    logger.error("Connection error fetching conferences: %s", exc)
-    return []
-  except ValueError as exc:
-    logger.error("Configuration error in fetch_conferences: %s", exc)
-    return []
 
-# --- Sync Functions ---
+# =============================================================================
+# Sync Functions (API → Database)
+# =============================================================================
+# Each sync function calls its corresponding fetch function, then loops
+# through the results and upserts into the database using update_or_create().
+#
+# Common patterns:
+#   - Guard clause: if the fetch returns nothing, log a warning and bail
+#     out early — no partial writes.
+#   - Per-record try/except: one bad record (missing field, constraint
+#     violation) doesn't kill the entire sync.
+#   - Summary log: at the end, log created/updated/skipped counts so the
+#     management command gives clear terminal output.
+#
+# All sync functions are idempotent — running them multiple times produces
+# the same result. update_or_create() handles this: first run creates rows,
+# subsequent runs update them in place.
+
 def sync_teams():
     """
     Fetch all teams from the CBBData API and upsert them into the Team model.
 
-    Calls fetch_teams() then loops through the results, using Django's
-    update_or_create() to insert new rows or update existing ones. The API's
-    `id` field is used as the lookup key so records stay stable across syncs.
+    Uses the API's `id` field as the lookup key so records stay stable
+    across syncs. The conference ForeignKey is NOT set here — that happens
+    in sync_conferences() after the Conference table is populated.
 
-    Error handling:
-      - If fetch_teams() returns [] (API down or error), logs a warning,
-        and exits early — no database changes are made.
-      - Each team is wrapped in its own try/except so a single bad record
-        (missing required field, slug collision, etc.) is skipped without
-        killing the entire sync.
-      - Logs a summary at the end: created, updated, and skipped counts.
+    Progress is displayed with a tqdm bar in the terminal. The
+    logging_redirect_tqdm context manager ensures logger.warning() calls
+    print cleanly above the progress bar without visual corruption.
 
-    Called by the sync_data management command: python manage.py sync_data
+    Called by: python manage.py sync_teams (or sync_data)
     """
     teams = fetch_teams()
-    # Guard clause — if the API returned nothing, don't silently continue.
+
     if not teams:
       logger.warning("sync_teams: fetch_teams() returned no data — skipping sync.")
       return
 
-    # Counters for the summary log at the end of the sync
     created_count = 0
     updated_count = 0
     skipped_count = 0
@@ -238,12 +323,11 @@ def sync_teams():
     with logging_redirect_tqdm():
       for team in tqdm(teams, desc='Syncing teams', unit='team', ncols=80):
         try:
-          # Convert API object to dictionary
           team_dict = team.to_dict()
-          # Then create/update the team
+
           team_obj, created = Team.objects.update_or_create(
-            id = team_dict['id'],  # lookup — how Django finds the existing record
-            defaults = {  # everything to set/update on that record
+            id = team_dict['id'],  # lookup key — matches the API's primary key
+            defaults = {
               'source_id' : team_dict.get('sourceId'),
               'school' : team_dict.get('school', ''),
               'abbrv' : team_dict.get('abbreviation', ''),
@@ -256,8 +340,7 @@ def sync_teams():
               'current_venue_name' : team_dict.get('currentVenue', ''),
               'current_city' : team_dict.get('currentCity', ''),
               'current_state' : team_dict.get('currentState', ''),
-              # Raw API integer ID — kept for reference. The ForeignKey (conference)
-              # is linked separately once sync_conferences() has run.
+              # Raw API conference ID — the actual ForeignKey is linked in sync_conferences()
               'api_conference_id' : team_dict.get('conferenceId'),
             }
           )
@@ -267,22 +350,32 @@ def sync_teams():
             updated_count += 1
 
         except (IntegrityError, KeyError) as exc:
-          # IntegrityError — slug collision or NOT NULL violation on a required field
-          # KeyError — API response missing the 'id' key entirely
+          # IntegrityError — slug collision or NOT NULL violation
+          # KeyError       — API response missing the 'id' key entirely
           skipped_count += 1
           logger.warning("Skipped team (id=%s): %s", team_dict.get('id', '?'), exc)
           continue
 
-    # Summary line so the management command gives clear feedback
     logger.info(
       "sync_teams complete — %d created, %d updated, %d skipped (of %d total).",
       created_count, updated_count, skipped_count, len(teams)
     )
 
+
 def sync_conferences():
   """
-  Fetch all conferences from the CBBData API and upsert them into the Conference model.
-  Called by the sync_data management command: python manage.py sync_data
+  Fetch all conferences from the CBBData API and upsert into the Conference model.
+
+  After upserting conferences, this function also links teams to their
+  conferences by matching Team.api_conference_id → Conference.id. This
+  two-step process exists because sync_teams() may run before conferences
+  exist in the DB, so it stores the raw API conference ID and defers the
+  FK linkage to here.
+
+  Only teams with a null conference FK and a non-null api_conference_id are
+  processed — teams already linked are left alone.
+
+  Called by: python manage.py sync_conferences (or sync_data)
   """
   conferences = fetch_conferences()
 
@@ -315,7 +408,10 @@ def sync_conferences():
       skipped_count += 1
       logger.warning("Skipped conference (id=%s): %s", conf_dict.get('id', '?'), exc)
 
-  # Link each team's conference FK using the raw api_conference_id
+  # --- Link teams to conferences ---
+  # Find all teams that have a raw API conference ID but no FK set yet,
+  # and wire up the relationship. This runs after every conference sync
+  # in case new teams were added since the last run.
   for team in Team.objects.filter(conference__isnull = True, api_conference_id__isnull = False) :
     try :
       team.conference = Conference.objects.get(id = team.api_conference_id)
@@ -328,19 +424,40 @@ def sync_conferences():
     created_count, updated_count, skipped_count, len(conferences)
   )
 
+
 def sync_all_season_stats():
   """
-  Sync stats for every team across the last 26 seasons.
+  Sync season-level stats for every team across the last ~20 seasons.
 
-  Makes one API call per season (26 total) instead of one per team (~362).
-  Each season response contains all teams — rows are matched to Team objects
-  via school name rather than the stats API's teamId, which can differ from
-  the teams API's id and cause FK constraint failures.
+  Makes one bulk API call per season (controlled by STATS_START_YEAR →
+  CURRENT_YEAR) rather than one per team. Each response contains stats
+  for every collegiate basketball program — not just D1 — so we filter
+  by matching school names against our Team table.
 
-  Called as a separate step in the sync_data management command, after
-  sync_teams() has already populated the teams table.
+  Team matching:
+    The API's teamId in stat responses doesn't always match the id from
+    the teams endpoint (a known quirk of the CBBData API). To avoid FK
+    constraint failures, we match on school name instead. A lowercase
+    dict lookup (team_lookup) is built once before the loop.
+
+    Schools that appear in the stats response but aren't in our Team table
+    are non-D1 programs — these are silently counted as "ignored" and
+    logged at DEBUG level (not WARNING) to keep output clean.
+
+  API field mapping:
+    The cbbd library returns nested dicts with camelCase keys. The main
+    stat object contains:
+      - teamStats.fieldGoals / twoPointFieldGoals / threePointFieldGoals / freeThrows
+      - teamStats.points / rebounds / turnovers / fourFactors
+      - teamStats.rating / trueShooting / possessions / assists / steals / blocks
+      - opponentStats (same structure as teamStats, but for the opponent)
+    Each sub-dict is unpacked and mapped to the flat TeamSeasonStats model
+    fields in the update_or_create() call below.
+
+  Called by: python manage.py sync_season_stats (or sync_data)
+  Depends on: sync_teams() must have run first to populate the Team table.
   """
-  # Build a school-name -> Team lookup once before the outer loop.
+  # Build a school-name → Team lookup once before the outer loop.
   # Lower-cased for case-insensitive matching against API response values.
   team_lookup = {t.school.lower(): t for t in Team.objects.all()}
   if not team_lookup:
@@ -350,34 +467,35 @@ def sync_all_season_stats():
   seasons = range(STATS_START_YEAR, CURRENT_YEAR + 1)
   created_count = 0
   updated_count = 0
-  skipped_count = 0   # DB errors only
-  ignored_count = 0   # non-D1 programs not in our team table
+  skipped_count = 0   # DB errors (IntegrityError, KeyError)
+  ignored_count = 0   # non-D1 programs not in our Team table — expected, not errors
 
   with logging_redirect_tqdm():
     for season in tqdm(seasons, desc='Syncing season stats', unit='season', ncols=80):
       season_stats = fetch_season_stats_bulk(season)
-      # Polite pause before the next API call, guards against hitting the API rate limit.
+
+      # Polite pause between API calls — helps avoid triggering rate limits
+      # even though the bulk approach already minimizes call count.
       time.sleep(BETWEEN_CALLS_DELAY)
+
       if not season_stats:
         logger.warning("No stats returned for season %s — skipping.", season)
         continue
 
       for season_stat in season_stats:
-        # Keys use camelCase aliases (e.g. 'teamStats', 'fieldGoals', 'teamId')
         team_stat_dict = season_stat.to_dict()
-        # Resolve FK via school name — more reliable than the API's teamId.
+
+        # --- Resolve Team FK via school name ---
         school = (team_stat_dict.get('team') or '').lower()
         team_obj = team_lookup.get(school)
         if team_obj is None:
           ignored_count += 1
-          # Non-D1 programs appear in bulk responses but aren't in our team table — expected, not an error.
           logger.debug("Ignoring non-D1 school '%s' in season %s.", school, season)
           continue
 
-        # Offensive and opponent stat blocks (already plain dicts)
-        stat_dict     = team_stat_dict.get('teamStats', {})
-        opp_stat_dict = team_stat_dict.get('opponentStats', {})
-        # Offensive sub-dicts
+        # --- Unpack nested API response into flat dicts ---
+        # Offensive stats
+        stat_dict         = team_stat_dict.get('teamStats', {})
         fg_dict           = stat_dict.get('fieldGoals', {})
         fg_2pt_dict       = stat_dict.get('twoPointFieldGoals', {})
         fg_3pt_dict       = stat_dict.get('threePointFieldGoals', {})
@@ -386,7 +504,9 @@ def sync_all_season_stats():
         rebounds_dict     = stat_dict.get('rebounds', {})
         turnovers_dict    = stat_dict.get('turnovers', {})
         four_factors_dict = stat_dict.get('fourFactors', {})
-        # Opponent sub-dicts
+
+        # Opponent / defensive stats (same nested structure)
+        opp_stat_dict         = team_stat_dict.get('opponentStats', {})
         opp_fg_dict           = opp_stat_dict.get('fieldGoals', {})
         opp_2pt_dict          = opp_stat_dict.get('twoPointFieldGoals', {})
         opp_3pt_dict          = opp_stat_dict.get('threePointFieldGoals', {})
@@ -398,7 +518,7 @@ def sync_all_season_stats():
 
         try:
           stat_obj, created = TeamSeasonStats.objects.update_or_create(
-            # Lookup — must match unique_together = ('team', 'season').
+            # Composite lookup key — matches unique_together = ('team', 'season')
             team_id = team_obj.id,
             season  = team_stat_dict.get('season'),
             defaults = {
@@ -431,7 +551,7 @@ def sync_all_season_stats():
               'off_reb_total'    : rebounds_dict.get('total'),
               'off_reb_offensive': rebounds_dict.get('offensive'),
               'off_reb_defensive': rebounds_dict.get('defensive'),
-              # --- Offensive four factors (advanced) ---
+              # --- Offensive four factors + advanced ---
               'off_eff_fg_pct'    : four_factors_dict.get('effectiveFieldGoalPct'),
               'off_ft_rate'       : four_factors_dict.get('freeThrowRate'),
               'off_oreb_pct'      : four_factors_dict.get('offensiveReboundPct'),
