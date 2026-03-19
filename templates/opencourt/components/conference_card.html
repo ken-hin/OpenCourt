@@ -1,0 +1,29 @@
+<div class="card bg-base-200 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title text-2xl">{{ conference.name }}</h2>
+    <div class="divider my-1"></div>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <!-- head -->
+        <thead>
+        <tr>
+          <th>Name</th>
+          <th>Record</th>
+        </tr>
+        </thead>
+        <tbody>
+      {% for team in conference.teams.all %}
+        <tr class="hover:bg-base-100">
+          <td><a href="{% url 'opencourt:team-detail' team.slug %}">{{ team.school }}</a></td>
+          {% if team.current_season %}
+            <td>{{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}</td>
+          {% else %}
+            <td>—</td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

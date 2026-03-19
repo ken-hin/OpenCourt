@@ -35,43 +35,33 @@
         </div>
       </div>
     </div>
-
     <!-- Team Cards -->
     <div class="flex flex-wrap gap-4 justify-center">
-
       {% for team in team_list %}
-
         {% if team.conference.slug == 'acc' %}
           <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="acc-section">
               {% include 'opencourt/components/team_card.html' %}
           </a>
-
         {% elif team.conference.slug == 'big-ten' %}
           <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="big10-section">
               {% include 'opencourt/components/team_card.html' %}
           </a>
-
         {% elif team.conference.slug == 'big-12' %}
           <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="big12-section">
               {% include 'opencourt/components/team_card.html' %}
           </a>
-
         {% elif team.conference.slug == 'big-east' %}
           <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="big-east-section">
               {% include 'opencourt/components/team_card.html' %}
           </a>
-
         {% elif team.conference.slug == 'sec' %}
           <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="sec-section">
               {% include 'opencourt/components/team_card.html' %}
           </a>
         {% else %}
-
         {% endif %}
-
       {% endfor %}
     </div>
-
   </div>
 
   <script src="{% static 'js/conference_filter.js' %}"></script>
