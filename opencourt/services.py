@@ -124,7 +124,7 @@ def fetch_teams():
 
 # --- Season Stats Data---
 # Retry / backoff settings for rate-limited API calls.
-MAX_RETRIES     = 4
+MAX_RETRIES = 4
 RETRY_BASE_DELAY = 5   # seconds — doubles each attempt: 5, 10, 20, 40
 BETWEEN_CALLS_DELAY = 1  # seconds to sleep between successful season fetches
 
@@ -170,7 +170,10 @@ def fetch_season_stats_bulk(season):
           logger.error("Rate limited on season %s — max retries exceeded.", season)
           return []
       # Non-429 API error — no point retrying
-      logger.error("CBBData API error fetching bulk stats for season %s (HTTP %s): %s", season, exc.status, exc.reason)
+      logger.error(
+        "CBBData API error fetching bulk stats for season %s (HTTP %s): %s",
+        season, exc.status, exc.reason
+      )
       return []
 
     except ConnectionError as exc:
