@@ -85,7 +85,7 @@ RATINGS_ENDPOINT = 'RatingsApi'
 # --- Year constants ---
 CURRENT_YEAR = date.today().year
 LAST_YEAR = CURRENT_YEAR - 1
-STATS_START_YEAR = CURRENT_YEAR - 20  # oldest season to sync — controls how many years of history we keep
+STATS_START_YEAR = CURRENT_YEAR - 9  # oldest season to sync — controls how many years of history we keep
 
 # --- Rate limiting / retry ---
 # These control the backoff behavior when the API returns HTTP 429.
