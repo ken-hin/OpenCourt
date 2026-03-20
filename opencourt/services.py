@@ -1,11 +1,13 @@
 # services.py — External API communication and database sync logic.
-#
+# -----------------------------------------------------------------------------
 # This module is the bridge between the CBBData API and our Django models.
 # It handles every outbound HTTP call, response parsing, retry logic, and
 # ORM upsert. Views never talk to the API directly — they read from the
 # database, which this module keeps in sync.
-#
+
+# =============================================================================
 # Architecture:
+# -----------------------------------------------------------------------------
 #   fetch_*()  functions — pure API calls. Each one hits a single CBBData
 #                          endpoint, handles errors, and returns raw data
 #                          (or [] on failure). No database writes.
@@ -17,35 +19,50 @@
 #   1. sync_conferences()       → populates Conference table
 #   2. sync_teams()             → populates Team table, links FK to Conference
 #   3. sync_all_season_stats()  → populates TeamSeasonStats, links FK to Team
+#   4. sync_games()             → populates Game table, links FKs to Team + Conference
+#   5. sync_game_team_stats()   → populates GameTeamStats, links FKs to Game + Team
 #
 # These are invoked by management commands in opencourt/management/commands/:
 #   python manage.py sync_conferences
 #   python manage.py sync_teams
 #   python manage.py sync_season_stats
-#   python manage.py sync_data          (runs all three in order)
-#
+#   python manage.py sync_games          (runs steps 4 + 5 together)
+#   python manage.py sync_data           (runs all steps in order)
+
+# =============================================================================
 # API docs & key:
+# -----------------------------------------------------------------------------
 #   The CBBData API is hosted at https://api.collegebasketballdata.com.
 #   The API key is read from the CBB_API_KEY environment variable (loaded
 #   from .env by django-environ). See .env.example for setup instructions.
 #   NEVER hardcode the key in this file.
-#
-# Rate limiting:
+
+# =============================================================================
+# Rate limiting & pagination:
+# -----------------------------------------------------------------------------
 #   The API enforces rate limits and will return HTTP 429 when exceeded.
 #   The CBBData docs recommend "chunky" (bulk) requests over "chatty"
-#   (per-entity) ones. We follow this: stats are fetched per-season (~26
+#   (per-entity) ones. We follow this: stats are fetched per-season (~10
 #   calls) rather than per-team (~362 calls). Retry with exponential
-#   backoff is built into fetch_season_stats_bulk().
+#   backoff is built into every fetch_*() function.
+#
+#   The /games and /games/teams endpoints cap responses at 3,000 rows,
+#   ordered by start date. A full D1 season has ~5,500 games, and
+#   /games/teams returns 2 rows per game (~11,000 total). To get complete
+#   data, fetch_games_bulk() and fetch_game_team_stats_bulk() accept
+#   start_date_range / end_date_range filters. The sync functions split
+#   fetches into monthly windows (Nov → May) so each call stays well
+#   under the 3,000-row limit.
 
 import logging
 import time
-from datetime import date
+from datetime import date, datetime
 import os
 import cbbd
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from django.db import IntegrityError
-from .models import Team, Conference, TeamSeasonStats
+from .models import Team, Conference, TeamSeasonStats, Game, GameTeamStats
 
 # Module-level logger — tagged as 'opencourt.services' so log messages can
 # be filtered independently in Django's LOGGING config. All sync functions
@@ -57,7 +74,7 @@ logger = logging.getLogger(__name__)
 
 # =============================================================================
 # API Configuration
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Shared config object used by every fetch function. The API key is read
 # once at module import time from the environment. Both api_key and
 # access_token are set because the cbbd client uses different auth headers
@@ -71,33 +88,29 @@ configuration = cbbd.Configuration(
 
 # =============================================================================
 # Constants
-# =============================================================================
-
+# -----------------------------------------------------------------------------
 # --- API endpoint names ---
 # Passed to init_api_client() to get the right typed client. These match
 # the class names in the cbbd library (e.g. cbbd.TeamsApi).
 TEAMS_ENDPOINT = 'TeamsApi'
 CONFERENCES_ENDPOINT = 'ConferencesApi'
 STATS_ENDPOINT = 'StatsApi'
+GAMES_ENDPOINT = 'GamesApi'
 RANKINGS_ENDPOINT = 'RankingsApi'
 RATINGS_ENDPOINT = 'RatingsApi'
-
 # --- Year constants ---
 CURRENT_YEAR = date.today().year
 LAST_YEAR = CURRENT_YEAR - 1
-STATS_START_YEAR = CURRENT_YEAR - 9  # oldest season to sync — controls how many years of history we keep
-
+STATS_START_YEAR = CURRENT_YEAR - 9  # the oldest season to sync — controls how many years of history we keep
 # --- Rate limiting / retry ---
-# These control the backoff behavior when the API returns HTTP 429.
-# Delay doubles each attempt: 5s → 10s → 20s → 40s.
+# These control the backoff behavior when the API returns HTTP 429. Delay doubles each attempt: 5s → 10s → 20s → 40s.
 MAX_RETRIES = 4                # max number of retry attempts per API call
 RETRY_BASE_DELAY = 5           # seconds — starting delay, doubled each retry
 BETWEEN_CALLS_DELAY = 1        # seconds to pause between consecutive season fetches
 
-
 # =============================================================================
 # API Client Factory
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 def init_api_client(config, endpoint):
   """
@@ -131,6 +144,8 @@ def init_api_client(config, endpoint):
       api_instance = cbbd.TeamsApi(api_client)
     case 'StatsApi':
       api_instance = cbbd.StatsApi(api_client)
+    case 'GamesApi':
+      api_instance = cbbd.GamesApi(api_client)
     case 'RankingsApi':
       api_instance = cbbd.RankingsApi(api_client)
     case 'RatingsApi':
@@ -140,10 +155,9 @@ def init_api_client(config, endpoint):
 
   return api_instance
 
-
 # =============================================================================
 # Fetch Functions (API → Python objects)
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Each fetch function makes a single API call and returns raw data. They
 # never touch the database. On any failure they return [] so callers can
 # safely iterate without None-checking.
@@ -276,11 +290,12 @@ def fetch_season_stats_bulk(season):
     except ValueError as exc:
       logger.error("Configuration error in fetch_season_stats_bulk: %s", exc)
       return []
+  return None
 
 
 # =============================================================================
 # Sync Functions (API → Database)
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Each sync function calls its corresponding fetch function, then loops
 # through the results and upserts into the database using update_or_create().
 #
@@ -360,7 +375,6 @@ def sync_teams():
       "sync_teams complete — %d created, %d updated, %d skipped (of %d total).",
       created_count, updated_count, skipped_count, len(teams)
     )
-
 
 def sync_conferences():
   """
@@ -589,4 +603,469 @@ def sync_all_season_stats():
   logger.info(
     "sync_all_season_stats complete — %d created, %d updated, %d skipped, %d non-D1 ignored (across %d seasons).",
     created_count, updated_count, skipped_count, ignored_count, len(seasons)
+  )
+
+
+# =============================================================================
+# Game Fetch Functions
+# -----------------------------------------------------------------------------
+# Two fetch functions for the /games and /games/teams endpoints. Both accept
+# optional date-range filters to work around the 3,000-row API cap. The sync
+# functions below call these in monthly windows to guarantee complete data.
+
+def fetch_games_bulk(season, start_date_range=None, end_date_range=None):
+  """
+  Fetch games for a single season from the CBBData /games endpoint.
+
+  The API caps responses at 3,000 games per call. A full D1 season has
+  ~5,500 games, so callers should split by date range to get complete data
+  (see sync_games() for example).
+
+  Args:
+      season: int — the season year to fetch (e.g. 2025 for 2025-26).
+      start_date_range: Optional[datetime] — ISO 8601 start timestamp filter.
+      end_date_range: Optional[datetime] — ISO 8601 end timestamp filter.
+
+  Returns:
+      list — cbbd GameInfo objects, or [] on any error.
+  """
+  kwargs = {'season': season}
+  if start_date_range:
+    kwargs['start_date_range'] = start_date_range
+  if end_date_range:
+    kwargs['end_date_range'] = end_date_range
+
+  for attempt in range(MAX_RETRIES + 1):
+    try:
+      api_instance = init_api_client(configuration, GAMES_ENDPOINT)
+      games = api_instance.get_games(**kwargs)
+      return games
+
+    except cbbd.ApiException as exc:
+      if exc.status == 429:
+        if attempt < MAX_RETRIES:
+          retry_after = None
+          if exc.headers:
+            try:
+              retry_after = int(exc.headers.get('Retry-After', 0)) or None
+            except (ValueError, TypeError):
+              pass
+          wait = retry_after if retry_after else RETRY_BASE_DELAY * (2 ** attempt)
+          logger.warning(
+            "Rate limited fetching games for season %s — waiting %ds before retry %d/%d.",
+            season, wait, attempt + 1, MAX_RETRIES
+          )
+          time.sleep(wait)
+          continue
+        else:
+          logger.error("Rate limited fetching games for season %s — max retries exceeded.", season)
+          return []
+      logger.error(
+        "CBBData API error fetching games for season %s (HTTP %s): %s",
+        season, exc.status, exc.reason
+      )
+      return []
+
+    except ConnectionError as exc:
+      logger.error("Connection error fetching games for season %s: %s", season, exc)
+      return []
+
+    except ValueError as exc:
+      logger.error("Configuration error in fetch_games_bulk: %s", exc)
+      return []
+  return []
+
+
+def fetch_game_team_stats_bulk(season, start_date_range=None, end_date_range=None):
+  """
+  Fetch per-team box score stats for games in a single season from
+  the CBBData /games/teams endpoint.
+
+  The API caps responses at 3,000 objects per call. Each game produces
+  two objects (one per team), so the effective limit is ~1,500 games.
+  Callers should split by date range for complete data.
+
+  Args:
+      season: int — the season year to fetch.
+      start_date_range: Optional[datetime] — ISO 8601 start timestamp filter.
+      end_date_range: Optional[datetime] — ISO 8601 end timestamp filter.
+
+  Returns:
+      list — cbbd GameBoxScoreTeam objects, or [] on any error.
+  """
+  kwargs = {'season': season}
+  if start_date_range:
+    kwargs['start_date_range'] = start_date_range
+  if end_date_range:
+    kwargs['end_date_range'] = end_date_range
+
+  for attempt in range(MAX_RETRIES + 1):
+    try:
+      api_instance = init_api_client(configuration, GAMES_ENDPOINT)
+      stats = api_instance.get_game_teams(**kwargs)
+      return stats
+
+    except cbbd.ApiException as exc:
+      if exc.status == 429:
+        if attempt < MAX_RETRIES:
+          retry_after = None
+          if exc.headers:
+            try:
+              retry_after = int(exc.headers.get('Retry-After', 0)) or None
+            except (ValueError, TypeError):
+              pass
+          wait = retry_after if retry_after else RETRY_BASE_DELAY * (2 ** attempt)
+          logger.warning(
+            "Rate limited fetching game team stats for season %s — waiting %ds before retry %d/%d.",
+            season, wait, attempt + 1, MAX_RETRIES
+          )
+          time.sleep(wait)
+          continue
+        else:
+          logger.error("Rate limited fetching game team stats for season %s — max retries exceeded.", season)
+          return []
+      logger.error(
+        "CBBData API error fetching game team stats for season %s (HTTP %s): %s",
+        season, exc.status, exc.reason
+      )
+      return []
+
+    except ConnectionError as exc:
+      logger.error("Connection error fetching game team stats for season %s: %s", season, exc)
+      return []
+
+    except ValueError as exc:
+      logger.error("Configuration error in fetch_game_team_stats_bulk: %s", exc)
+      return []
+  return None
+
+
+# =============================================================================
+# Game Sync Functions
+# -----------------------------------------------------------------------------
+# Two sync functions that fetch game data from the API and upsert into Django
+# models. sync_games() populates the Game table (one row per game), and
+# sync_game_team_stats() populates GameTeamStats (two rows per game — one
+# per team's box score).
+#
+# Both are called by the `sync_games` management command in sequence:
+#   sync_games() first (Game rows must exist for GameTeamStats FK resolution),
+#   sync_game_team_stats() second.
+#
+# Monthly date-range splitting:
+#   The API caps at 3,000 rows per request. A full season has ~5,500 games
+#   and ~11,000 team stat rows. We split into monthly windows (Nov → May)
+#   so each request stays well under the limit. This also ensures postseason
+#   games (conference tournaments, NCAA, NIT in Mar/Apr) are captured.
+
+def sync_games():
+  """
+  Fetch game results from the /games endpoint and upsert into the Game model.
+
+  Syncs the current season only (not historical). The API caps responses
+  at 3,000 games, but a full D1 season has ~5,500 games. To get complete
+  data we split the fetch at January 1st — the first call covers Nov–Dec
+  (preseason / non-conference) and the second covers Jan–May (conference
+  play + postseason). Each half is well under the 3,000 limit.
+
+  Team matching:
+    Like sync_all_season_stats(), we match by school name (lowered) rather
+    than the API's teamId to avoid FK mismatches. Both home and away teams
+    must be in our Team table for the game to be saved — games between
+    two non-D1 programs are silently skipped.
+
+  Conference linking:
+    home_conference and away_conference FKs are resolved by matching the
+    API's conference name string against Conference.abbrv.
+
+  Called by: python manage.py sync_games (or sync_data)
+  Depends on: sync_teams() and sync_conferences() must have run first.
+  """
+  team_lookup = {t.school.lower(): t for t in Team.objects.all()}
+  conf_lookup = {c.abbrv.lower(): c for c in Conference.objects.all()}
+
+  if not team_lookup:
+    logger.warning("sync_games: no teams found — run sync_teams first.")
+    return
+
+  season = CURRENT_YEAR
+
+  # The 2025-26 season (season=2026) runs Nov 2025 → Apr 2026.
+  # Split into monthly windows to stay under the 3,000 cap per call.
+  # A full D1 season has ~5,500 games spread across Nov → Apr.
+  # Monthly windows keep each batch well under the limit.
+  date_ranges = []
+  for month in range(11, 13):  # Nov, Dec (prior calendar year)
+    start = datetime(season - 1, month, 1)
+    end = datetime(season - 1, month + 1, 1) if month < 12 else datetime(season, 1, 1)
+    date_ranges.append({'start_date_range': start, 'end_date_range': end})
+  for month in range(1, 6):  # Jan – May (season calendar year, covers postseason)
+    start = datetime(season, month, 1)
+    end = datetime(season, month + 1, 1)
+    date_ranges.append({'start_date_range': start, 'end_date_range': end})
+
+  games_data = []
+  for dr in date_ranges:
+    batch = fetch_games_bulk(season, **dr)
+    if batch:
+      logger.info("Fetched %d games for date range %s.", len(batch), dr)
+      games_data.extend(batch)
+    time.sleep(BETWEEN_CALLS_DELAY)
+
+  if not games_data:
+    logger.warning("sync_games: no games returned for season %s.", season)
+    return
+
+  created_count = 0
+  updated_count = 0
+  skipped_count = 0
+  ignored_count = 0
+
+  with logging_redirect_tqdm():
+    for game in tqdm(games_data, desc='Syncing games', unit='game', ncols=80):
+      game_dict = game.to_dict()
+
+      # --- Resolve home and away Team FKs via school name ---
+      home_school = (game_dict.get('homeTeam') or '').lower()
+      away_school = (game_dict.get('awayTeam') or '').lower()
+      home_team_obj = team_lookup.get(home_school)
+      away_team_obj = team_lookup.get(away_school)
+
+      # Skip games where either team isn't in our D1 table
+      if home_team_obj is None or away_team_obj is None:
+        ignored_count += 1
+        logger.debug(
+          "Ignoring game %s: home='%s' away='%s' — one or both not in team table.",
+          game_dict.get('id'), home_school, away_school
+        )
+        continue
+
+      # --- Resolve conference FKs ---
+      home_conf = conf_lookup.get((game_dict.get('homeConference') or '').lower())
+      away_conf = conf_lookup.get((game_dict.get('awayConference') or '').lower())
+
+      try:
+        game_obj, created = Game.objects.update_or_create(
+          source_id=str(game_dict['id']),  # API's game ID as lookup key
+          defaults={
+            'season': game_dict.get('season'),
+            'season_label': game_dict.get('seasonLabel', ''),
+            'season_type': game_dict.get('seasonType'),
+            'tournament': game_dict.get('tournament'),
+            'game_type': game_dict.get('gameType'),
+            'game_notes': game_dict.get('gameNotes'),
+            'status': game_dict.get('status'),
+            'start_date': game_dict.get('startDate'),
+            'start_time_tbd': game_dict.get('startTimeTbd', False),
+            # --- Home ---
+            'home_team': home_team_obj,
+            'home_conference': home_conf,
+            'home_seed': game_dict.get('homeSeed'),
+            'home_points': game_dict.get('homePoints'),
+            'home_period_points': game_dict.get('homePeriodPoints'),
+            'home_winner': game_dict.get('homeWinner'),
+            'home_elo_start': game_dict.get('homeTeamEloStart'),
+            'home_elo_end': game_dict.get('homeTeamEloEnd'),
+            # --- Away ---
+            'away_team': away_team_obj,
+            'away_conference': away_conf,
+            'away_seed': game_dict.get('awaySeed'),
+            'away_points': game_dict.get('awayPoints'),
+            'away_period_points': game_dict.get('awayPeriodPoints'),
+            'away_winner': game_dict.get('awayWinner'),
+            'away_elo_start': game_dict.get('awayTeamEloStart'),
+            'away_elo_end': game_dict.get('awayTeamEloEnd'),
+            # --- Venue ---
+            'neutral_site': game_dict.get('neutralSite', False),
+            'conference_game': game_dict.get('conferenceGame', False),
+            'attendance': game_dict.get('attendance'),
+            'venue_id': game_dict.get('venueId'),
+            'venue': game_dict.get('venue'),
+            'city': game_dict.get('city'),
+            'state': game_dict.get('state'),
+            # --- Analytics ---
+            'excitement': game_dict.get('excitement'),
+          }
+        )
+        if created:
+          created_count += 1
+        else:
+          updated_count += 1
+
+      except (IntegrityError, KeyError) as exc:
+        skipped_count += 1
+        logger.warning("Failed to upsert game %s: %s", game_dict.get('id'), exc)
+
+  logger.info(
+    "sync_games complete — %d created, %d updated, %d skipped, %d ignored (non-D1).",
+    created_count, updated_count, skipped_count, ignored_count
+  )
+
+
+def sync_game_team_stats():
+  """
+  Fetch per-team box score stats from /games/teams and upsert into GameTeamStats.
+
+  Syncs the current season only. Each API row contains one team's stats
+  for one game (shooting, four factors, rebounds, fouls, etc.). We create
+  two GameTeamStats rows per game — one for each team.
+
+  Linking to Game:
+    The API returns a gameId on each row. We look up the matching Game
+    object using source_id (which stores the API's game ID as a string).
+    If the Game doesn't exist yet (e.g. sync_games hasn't run or the game
+    was filtered out), the row is skipped.
+
+  Team matching:
+    Same school-name lookup as other sync functions.
+
+  Called by: python manage.py sync_games (or sync_data)
+  Depends on: sync_games() must have run first to populate Game rows.
+  """
+  team_lookup = {t.school.lower(): t for t in Team.objects.all()}
+
+  # Build a game ID → Game object lookup from all games in the current season.
+  # source_id stores the API's game ID as a string.
+  game_lookup = {g.source_id: g for g in Game.objects.filter(season=CURRENT_YEAR)}
+
+  if not team_lookup:
+    logger.warning("sync_game_team_stats: no teams found — run sync_teams first.")
+    return
+  if not game_lookup:
+    logger.warning("sync_game_team_stats: no games found — run sync_games first.")
+    return
+
+  season = CURRENT_YEAR
+
+  # Split into monthly windows to stay under the 3,000-row API cap.
+  # Each game produces 2 rows (one per team), so monthly windows are
+  # essential — even a single busy month can exceed 3,000 rows.
+  date_ranges = []
+  for month in range(11, 13):  # Nov, Dec
+    start = datetime(season - 1, month, 1)
+    end = datetime(season - 1, month + 1, 1) if month < 12 else datetime(season, 1, 1)
+    date_ranges.append({'start_date_range': start, 'end_date_range': end})
+  for month in range(1, 6):  # Jan – May
+    start = datetime(season, month, 1)
+    end = datetime(season, month + 1, 1)
+    date_ranges.append({'start_date_range': start, 'end_date_range': end})
+
+  stats_data = []
+  for dr in date_ranges:
+    batch = fetch_game_team_stats_bulk(season, **dr)
+    if batch:
+      logger.info("Fetched %d game team stat rows for date range %s.", len(batch), dr)
+      stats_data.extend(batch)
+    time.sleep(BETWEEN_CALLS_DELAY)
+
+  if not stats_data:
+    logger.warning("sync_game_team_stats: no data returned for season %s.", season)
+    return
+
+  created_count = 0
+  updated_count = 0
+  skipped_count = 0
+  ignored_count = 0
+
+  with logging_redirect_tqdm():
+    for stat in tqdm(stats_data, desc='Syncing game team stats', unit='row', ncols=80):
+      stat_dict = stat.to_dict()
+
+      # --- Resolve Game FK ---
+      game_id_str = str(stat_dict.get('gameId', ''))
+      game_obj = game_lookup.get(game_id_str)
+      if game_obj is None:
+        ignored_count += 1
+        logger.debug("Ignoring game team stats for unknown game ID %s.", game_id_str)
+        continue
+
+      # --- Resolve Team FK ---
+      school = (stat_dict.get('team') or '').lower()
+      team_obj = team_lookup.get(school)
+      if team_obj is None:
+        ignored_count += 1
+        logger.debug("Ignoring game team stats for non-D1 school '%s'.", school)
+        continue
+
+      # --- Unpack nested stat dicts ---
+      ts = stat_dict.get('teamStats', {})
+      fg = ts.get('fieldGoals', {})
+      fg_2pt = ts.get('twoPointFieldGoals', {})
+      fg_3pt = ts.get('threePointFieldGoals', {})
+      ft = ts.get('freeThrows', {})
+      pts = ts.get('points', {})
+      reb = ts.get('rebounds', {})
+      tov = ts.get('turnovers', {})
+      ff = ts.get('fourFactors', {})
+      fouls = ts.get('fouls', {})
+
+      try:
+        stat_obj, created = GameTeamStats.objects.update_or_create(
+          game=game_obj,
+          team=team_obj,
+          defaults={
+            'is_home': stat_dict.get('isHome', False),
+            'game_minutes': stat_dict.get('gameMinutes'),
+            'pace': stat_dict.get('pace'),
+            'possessions': ts.get('possessions'),
+            # --- Shooting ---
+            'fg_made': fg.get('made'),
+            'fg_attempted': fg.get('attempted'),
+            'fg_pct': fg.get('pct'),
+            'two_pt_made': fg_2pt.get('made'),
+            'two_pt_attempted': fg_2pt.get('attempted'),
+            'two_pt_pct': fg_2pt.get('pct'),
+            'three_pt_made': fg_3pt.get('made'),
+            'three_pt_attempted': fg_3pt.get('attempted'),
+            'three_pt_pct': fg_3pt.get('pct'),
+            'ft_made': ft.get('made'),
+            'ft_attempted': ft.get('attempted'),
+            'ft_pct': ft.get('pct'),
+            # --- Counting stats ---
+            'points': pts.get('total'),
+            'assists': ts.get('assists'),
+            'steals': ts.get('steals'),
+            'blocks': ts.get('blocks'),
+            'turnovers': tov.get('total'),
+            'team_turnovers': tov.get('teamTotal'),
+            # --- Rebounds ---
+            'reb_total': reb.get('total'),
+            'reb_offensive': reb.get('offensive'),
+            'reb_defensive': reb.get('defensive'),
+            # --- Fouls ---
+            'fouls_total': fouls.get('total'),
+            'fouls_technical': fouls.get('technical'),
+            'fouls_flagrant': fouls.get('flagrant'),
+            # --- Points breakdown ---
+            'points_fast_break': pts.get('fastBreak'),
+            'points_off_turnovers': pts.get('offTurnovers'),
+            'points_in_paint': pts.get('inPaint'),
+            'points_by_period': pts.get('byPeriod'),
+            'largest_lead': pts.get('largestLead'),
+            # --- Four Factors ---
+            'eff_fg_pct': ff.get('effectiveFieldGoalPct'),
+            'ft_rate': ff.get('freeThrowRate'),
+            'oreb_pct': ff.get('offensiveReboundPct'),
+            'turnover_ratio': ff.get('turnoverRatio'),
+            # --- Advanced ---
+            'rating': ts.get('rating'),
+            'true_shooting': ts.get('trueShooting'),
+            'game_score': ts.get('gameScore'),
+          }
+        )
+        if created:
+          created_count += 1
+        else:
+          updated_count += 1
+
+      except (IntegrityError, KeyError) as exc:
+        skipped_count += 1
+        logger.warning(
+          "Failed to upsert game team stats for '%s' game %s: %s",
+          school, game_id_str, exc
+        )
+
+  logger.info(
+    "sync_game_team_stats complete — %d created, %d updated, %d skipped, %d ignored.",
+    created_count, updated_count, skipped_count, ignored_count
   )
