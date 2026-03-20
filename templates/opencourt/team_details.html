@@ -5,9 +5,9 @@
 {#                                                                             #}
 {# Layout:                                                                     #}
 {#   1. Team header (name, conference, location)                               #}
-{#   2. Historical charts (4 ApexCharts: line, radial bar, bar, area)          #}
-{#   3. Schedule table — current season games with clickable accordion rows    #}
-{#      that expand to show a full home/away box score comparison              #}
+{#   2. Two-column row: left placeholder (future content) + schedule table     #}
+{#      (right half, ~70vh, scrollable with sticky header)                     #}
+{#   3. Historical Data section — 4 ApexCharts (line, radial bar, bar, area)   #}
 {#                                                                             #}
 {# Context variables used:                                                     #}
 {#   team, schedule, stat_years, wins, losses, win_pct, off_rtg, opp_rtg,      #}
@@ -25,12 +25,115 @@
   <h1 class="text-3xl font-bold mb-1">{{ team.display_name }}</h1>
   <p class="text-sm text-gray-500 mb-8">{{ team.conference }} · {{ team.current_city }}, {{ team.current_state }}</p>
 
-  <!-- Main charts row -->
-  <div class="grid grid-cols-4 gap-4 mb-8">
+  <!-- ── Top row: placeholder (left) + schedule table (right) ────────────── -->
+  <div class="flex gap-6 mb-10">
+    <!-- Left placeholder — reserved for future content -->
+    <div class="w-1/2"></div>
+
+    <!-- Right column: Schedule table (50% width, ~70vh, scrollable) -->
+    <div class="w-1/2" style="height: 70vh;">
+      <!-- Schedule table ──────────────────────────────────────────────────────
+           Current season game list. Each row is clickable — clicking a row toggles
+           an accordion panel (hidden <tr>) that shows the full home/away box score.
+
+           Data source: `schedule` context variable from TeamDetailView, which
+           pre-processes Game + GameTeamStats into flat dicts with home_stats/away_stats.
+
+           Accordion behavior:
+             - Each game row has onclick="toggleBoxScore('box-N')" where N = forloop.counter
+             - The hidden row immediately below has id="box-N" and class="hidden"
+             - toggleBoxScore() toggles the "hidden" class to show/hide the box score
+             - If no GameTeamStats exist for a game, a fallback message is shown
+      -->
+      <h2 class="text-2xl font-bold mb-4">Schedule</h2>
+      {% if schedule %}
+      <div class="overflow-y-auto overflow-x-auto rounded-lg" style="height: calc(70vh - 48px);">
+        <table class="table table-zebra w-full">
+          <thead class="sticky top-0 z-10 bg-base-100">
+            <tr>
+              <th>Date</th>
+              <th>Opponent</th>
+              <th>H/A</th>
+              <th>Score</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in schedule %}
+            <tr class="hover cursor-pointer" onclick="toggleBoxScore('box-{{ forloop.counter }}')">
+              <td>{{ row.game.start_date|date:"M d, Y" }}</td>
+              <td>{{ row.opponent.display_name }}</td>
+              <td>{{ row.is_home|yesno:"Home,Away" }}</td>
+              <td>
+                {% if row.team_points is not None and row.opp_points is not None %}
+                  {{ row.team_points }} – {{ row.opp_points }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                {% if row.won is not None %}
+                  <span class="badge {% if row.won %}badge-success{% else %}badge-error{% endif %}">
+                    {{ row.won|yesno:"W,L" }}
+                  </span>
+                {% endif %}
+              </td>
+            </tr>
+            <!-- Accordion: 3-column box score with progress bars (hidden by default) -->
+            <tr id="box-{{ forloop.counter }}" class="hidden">
+              <td colspan="5" class="p-0">
+                {% if row.home_stats and row.away_stats %}
+                <div class="bg-base-300 px-4 py-5">
+                  {# Team name headers #}
+                  <div class="grid grid-cols-[1fr_auto_1fr] gap-x-4 mb-4 px-2">
+                    <div class="text-left font-bold text-sm">{{ row.game.home_team.display_name }}</div>
+                    <div class="w-20"></div>
+                    <div class="text-right font-bold text-sm">{{ row.game.away_team.display_name }}</div>
+                  </div>
+
+                  {# Stat rows — each row is a 3-column grid: home bar | label | away bar #}
+                  <div class="boxscore-stats space-y-2"
+                       data-home-color="{{ row.game.home_team.primary_color|default:'#6366f1' }}"
+                       data-away-color="{{ row.game.away_team.primary_color|default:'#ef4444' }}">
+
+                    {% with hs=row.home_stats aws=row.away_stats %}
+                    <div class="stat-row" data-home="{{ hs.points|default_if_none:0 }}" data-away="{{ aws.points|default_if_none:0 }}" data-label="PTS"></div>
+                    <div class="stat-row" data-home="{{ hs.fg_pct|default_if_none:0 }}" data-away="{{ aws.fg_pct|default_if_none:0 }}" data-label="FG%" data-home-display="{% if hs.fg_made is not None %}{{ hs.fg_made|floatformat:0 }}-{{ hs.fg_attempted|floatformat:0 }}{% endif %}" data-away-display="{% if aws.fg_made is not None %}{{ aws.fg_made|floatformat:0 }}-{{ aws.fg_attempted|floatformat:0 }}{% endif %}"></div>
+                    <div class="stat-row" data-home="{{ hs.three_pt_pct|default_if_none:0 }}" data-away="{{ aws.three_pt_pct|default_if_none:0 }}" data-label="3PT%" data-home-display="{% if hs.three_pt_made is not None %}{{ hs.three_pt_made|floatformat:0 }}-{{ hs.three_pt_attempted|floatformat:0 }}{% endif %}" data-away-display="{% if aws.three_pt_made is not None %}{{ aws.three_pt_made|floatformat:0 }}-{{ aws.three_pt_attempted|floatformat:0 }}{% endif %}"></div>
+                    <div class="stat-row" data-home="{{ hs.ft_pct|default_if_none:0 }}" data-away="{{ aws.ft_pct|default_if_none:0 }}" data-label="FT%" data-home-display="{% if hs.ft_made is not None %}{{ hs.ft_made|floatformat:0 }}-{{ hs.ft_attempted|floatformat:0 }}{% endif %}" data-away-display="{% if aws.ft_made is not None %}{{ aws.ft_made|floatformat:0 }}-{{ aws.ft_attempted|floatformat:0 }}{% endif %}"></div>
+                    <div class="stat-row" data-home="{{ hs.reb_total|default_if_none:0 }}" data-away="{{ aws.reb_total|default_if_none:0 }}" data-label="REB"></div>
+                    <div class="stat-row" data-home="{{ hs.reb_offensive|default_if_none:0 }}" data-away="{{ aws.reb_offensive|default_if_none:0 }}" data-label="OREB"></div>
+                    <div class="stat-row" data-home="{{ hs.assists|default_if_none:0 }}" data-away="{{ aws.assists|default_if_none:0 }}" data-label="AST"></div>
+                    <div class="stat-row" data-home="{{ hs.steals|default_if_none:0 }}" data-away="{{ aws.steals|default_if_none:0 }}" data-label="STL"></div>
+                    <div class="stat-row" data-home="{{ hs.blocks|default_if_none:0 }}" data-away="{{ aws.blocks|default_if_none:0 }}" data-label="BLK"></div>
+                    <div class="stat-row" data-home="{{ hs.turnovers|default_if_none:0 }}" data-away="{{ aws.turnovers|default_if_none:0 }}" data-label="TO"></div>
+                    {% endwith %}
+                  </div>
+                </div>
+                {% else %}
+                <div class="bg-base-300 p-4 text-gray-500 text-sm">Box score not available for this game.</div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-gray-500 mb-8">No games found for this season.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Historical Data section ──────────────────────────────────────────── -->
+  <h2 class="text-2xl font-bold mb-4">Historical Data</h2>
+
+  <!-- Top charts row -->
+  <div class="grid grid-cols-4 gap-4 mb-4">
     <div class="card bg-base-200 col-start-1 col-end-3 p-4">
       <div id="line-adwords"></div>
     </div>
-    <div class="card bg-base-200 col-start-3 p-4">
+    <div class="card bg-base-200 col-start-3 col-end-5 p-4">
       <div id="radialBarBottom"></div>
     </div>
   </div>
@@ -44,134 +147,6 @@
       <div id="areachart"></div>
     </div>
   </div>
-
-  <!-- Schedule table ──────────────────────────────────────────────────────
-       Current season game list. Each row is clickable — clicking a row toggles
-       an accordion panel (hidden <tr>) that shows the full home/away box score.
-
-       Data source: `schedule` context variable from TeamDetailView, which
-       pre-processes Game + GameTeamStats into flat dicts with home_stats/away_stats.
-
-       Accordion behavior:
-         - Each game row has onclick="toggleBoxScore('box-N')" where N = forloop.counter
-         - The hidden row immediately below has id="box-N" and class="hidden"
-         - toggleBoxScore() toggles the "hidden" class to show/hide the box score
-         - If no GameTeamStats exist for a game, a fallback message is shown
-  -->
-  <h2 class="text-2xl font-bold mb-4">Schedule</h2>
-  {% if schedule %}
-  <div class="overflow-x-auto mb-8">
-    <table class="table table-zebra w-full">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Opponent</th>
-          <th>H/A</th>
-          <th>Score</th>
-          <th>Result</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in schedule %}
-        <tr class="hover cursor-pointer" onclick="toggleBoxScore('box-{{ forloop.counter }}')">
-          <td>{{ row.game.start_date|date:"M d, Y" }}</td>
-          <td>{{ row.opponent.display_name }}</td>
-          <td>{{ row.is_home|yesno:"Home,Away" }}</td>
-          <td>
-            {% if row.team_points is not None and row.opp_points is not None %}
-              {{ row.team_points }} – {{ row.opp_points }}
-            {% else %}
-              —
-            {% endif %}
-          </td>
-          <td>
-            {% if row.won is not None %}
-              <span class="badge {% if row.won %}badge-success{% else %}badge-error{% endif %}">
-                {{ row.won|yesno:"W,L" }}
-              </span>
-            {% endif %}
-          </td>
-        </tr>
-        <!-- Accordion: box score row (hidden by default) -->
-        <tr id="box-{{ forloop.counter }}" class="hidden">
-          <td colspan="5" class="p-0">
-            {% if row.home_stats and row.away_stats %}
-            <div class="bg-base-300 p-4">
-              <table class="table table-compact w-full text-center">
-                <thead>
-                  <tr class="text-xs uppercase text-gray-400">
-                    <th class="text-left">Team</th>
-                    <th>PTS</th>
-                    <th>FG</th>
-                    <th>FG%</th>
-                    <th>3PT</th>
-                    <th>3P%</th>
-                    <th>FT</th>
-                    <th>FT%</th>
-                    <th>REB</th>
-                    <th>OREB</th>
-                    <th>AST</th>
-                    <th>STL</th>
-                    <th>BLK</th>
-                    <th>TO</th>
-                    <th>eFG%</th>
-                    <th>PACE</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {# Home team box score row #}
-                  <tr>
-                    <td class="text-left font-semibold">{{ row.game.home_team.display_name }}</td>
-                    <td>{{ row.home_stats.points|default_if_none:"—" }}</td>
-                    <td>{{ row.home_stats.fg_made|default_if_none:"—" }}-{{ row.home_stats.fg_attempted|default_if_none:"—" }}</td>
-                    <td>{% if row.home_stats.fg_pct is not None %}{{ row.home_stats.fg_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
-                    <td>{{ row.home_stats.three_pt_made|default_if_none:"—" }}-{{ row.home_stats.three_pt_attempted|default_if_none:"—" }}</td>
-                    <td>{% if row.home_stats.three_pt_pct is not None %}{{ row.home_stats.three_pt_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
-                    <td>{{ row.home_stats.ft_made|default_if_none:"—" }}-{{ row.home_stats.ft_attempted|default_if_none:"—" }}</td>
-                    <td>{% if row.home_stats.ft_pct is not None %}{{ row.home_stats.ft_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
-                    <td>{{ row.home_stats.reb_total|default_if_none:"—" }}</td>
-                    <td>{{ row.home_stats.reb_offensive|default_if_none:"—" }}</td>
-                    <td>{{ row.home_stats.assists|default_if_none:"—" }}</td>
-                    <td>{{ row.home_stats.steals|default_if_none:"—" }}</td>
-                    <td>{{ row.home_stats.blocks|default_if_none:"—" }}</td>
-                    <td>{{ row.home_stats.turnovers|default_if_none:"—" }}</td>
-                    <td>{% if row.home_stats.eff_fg_pct is not None %}{{ row.home_stats.eff_fg_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
-                    <td>{% if row.home_stats.pace is not None %}{{ row.home_stats.pace|floatformat:1 }}{% else %}—{% endif %}</td>
-                  </tr>
-                  {# Away team box score row #}
-                  <tr>
-                    <td class="text-left font-semibold">{{ row.game.away_team.display_name }}</td>
-                    <td>{{ row.away_stats.points|default_if_none:"—" }}</td>
-                    <td>{{ row.away_stats.fg_made|default_if_none:"—" }}-{{ row.away_stats.fg_attempted|default_if_none:"—" }}</td>
-                    <td>{% if row.away_stats.fg_pct is not None %}{{ row.away_stats.fg_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
-                    <td>{{ row.away_stats.three_pt_made|default_if_none:"—" }}-{{ row.away_stats.three_pt_attempted|default_if_none:"—" }}</td>
-                    <td>{% if row.away_stats.three_pt_pct is not None %}{{ row.away_stats.three_pt_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
-                    <td>{{ row.away_stats.ft_made|default_if_none:"—" }}-{{ row.away_stats.ft_attempted|default_if_none:"—" }}</td>
-                    <td>{% if row.away_stats.ft_pct is not None %}{{ row.away_stats.ft_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
-                    <td>{{ row.away_stats.reb_total|default_if_none:"—" }}</td>
-                    <td>{{ row.away_stats.reb_offensive|default_if_none:"—" }}</td>
-                    <td>{{ row.away_stats.assists|default_if_none:"—" }}</td>
-                    <td>{{ row.away_stats.steals|default_if_none:"—" }}</td>
-                    <td>{{ row.away_stats.blocks|default_if_none:"—" }}</td>
-                    <td>{{ row.away_stats.turnovers|default_if_none:"—" }}</td>
-                    <td>{% if row.away_stats.eff_fg_pct is not None %}{{ row.away_stats.eff_fg_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
-                    <td>{% if row.away_stats.pace is not None %}{{ row.away_stats.pace|floatformat:1 }}{% else %}—{% endif %}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            {% else %}
-            <div class="bg-base-300 p-4 text-gray-500 text-sm">Box score not available for this game.</div>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p class="text-gray-500 mb-8">No games found for this season.</p>
-  {% endif %}
 </div>
 {% endblock %}
 
@@ -358,12 +333,83 @@
     }).render();
 
     // -------------------------------------------------------------------------
-    // Schedule table — accordion toggle for box score rows
+    // Schedule table — accordion toggle + progress bar rendering
     // -------------------------------------------------------------------------
+
+    /**
+     * Build the 3-column progress bar layout for a .boxscore-stats container.
+     * Called once per accordion the first time it's opened. Each .stat-row div
+     * carries data-home, data-away, data-label, and optional data-pct (for
+     * percentage stats where the max is 100 instead of the max of both values).
+     *
+     * Layout per stat row:
+     *   [home value + bar →]  [LABEL]  [← bar + away value]
+     *
+     * Bar width = (value / maxOfBoth) * 100%, so the larger value always fills
+     * the full column width and the smaller one is proportional.
+     */
+    // Ensure a hex color string always has a # prefix.
+    // The API stores colors without it (e.g. "001A57"), but CSS needs "#001A57".
+    function ensureHash(color) {
+      if (!color) return null;
+      return color.startsWith('#') ? color : '#' + color;
+    }
+
+    function renderBoxScore(container) {
+      const homeColor = ensureHash(container.dataset.homeColor) || '#6366f1';
+      const awayColor = ensureHash(container.dataset.awayColor) || '#ef4444';
+      const rows = container.querySelectorAll('.stat-row');
+
+      rows.forEach(el => {
+        const homeVal = parseFloat(el.dataset.home) || 0;
+        const awayVal = parseFloat(el.dataset.away) || 0;
+        const label = el.dataset.label || '';
+        const isPct = label.includes('%');
+
+        // Percentage stats cap at 100; counting stats scale relative to the
+        // larger of the two values so the leader always fills the full bar.
+        const maxVal = isPct ? 100 : Math.max(homeVal, awayVal, 1);
+        const homePct = Math.min((homeVal / maxVal) * 100, 100);
+        const awayPct = Math.min((awayVal / maxVal) * 100, 100);
+
+        // Display text: use custom display (e.g. "10-22") if provided, else the raw value
+        const homeDisplay = el.dataset.homeDisplay || (isPct ? homeVal.toFixed(1) + '%' : String(homeVal));
+        const awayDisplay = el.dataset.awayDisplay || (isPct ? awayVal.toFixed(1) + '%' : String(awayVal));
+
+        // Using inline styles for bar track width instead of flex-1 to avoid
+        // potential collapse in nested grid/flex contexts.
+        el.className = 'grid grid-cols-[1fr_80px_1fr] gap-x-3 items-center px-2';
+        el.innerHTML =
+          `<div style="display:flex; align-items:center; gap:8px;">
+            <span class="text-xs font-medium" style="width:48px; text-align:right; flex-shrink:0;">${homeDisplay}</span>
+            <div style="position:relative; height:20px; border-radius:4px; flex:1 1 0%; min-width:0; overflow:hidden; background-color:rgba(128,128,128,0.15);">
+              <div style="position:absolute; top:0; right:0; height:100%; border-radius:4px; width:${homePct}%; background-color:${homeColor};"></div>
+            </div>
+          </div>
+          <div class="text-center text-xs font-semibold uppercase text-gray-400">${label}</div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="position:relative; height:20px; border-radius:4px; flex:1 1 0%; min-width:0; overflow:hidden; background-color:rgba(128,128,128,0.15);">
+              <div style="position:absolute; top:0; left:0; height:100%; border-radius:4px; width:${awayPct}%; background-color:${awayColor};"></div>
+            </div>
+            <span class="text-xs font-medium" style="width:48px; text-align:left; flex-shrink:0;">${awayDisplay}</span>
+          </div>`;
+      });
+
+      container.dataset.rendered = 'true';
+    }
+
     function toggleBoxScore(id) {
       const row = document.getElementById(id);
       if (!row) return;
       row.classList.toggle('hidden');
+
+      // Render progress bars on first open (lazy — avoids computing for all games up front)
+      if (!row.classList.contains('hidden')) {
+        const container = row.querySelector('.boxscore-stats');
+        if (container && container.dataset.rendered !== 'true') {
+          renderBoxScore(container);
+        }
+      }
     }
   </script>
 {% endblock %}
