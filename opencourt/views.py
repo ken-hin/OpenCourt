@@ -24,10 +24,10 @@
 
 import json
 from datetime import date
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.views.generic import TemplateView, ListView
 from django.shortcuts import get_object_or_404
-from opencourt.models import Team, Conference, TeamSeasonStats
+from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats
 
 
 class HomeView(TemplateView):
@@ -94,8 +94,8 @@ class ConferenceListView(ListView):
 
 class TeamDetailView(TemplateView):
     """
-    Detail page for a single team, showing historical stats and ApexCharts
-    visualizations across all synced seasons.
+    Detail page for a single team, showing historical stats, ApexCharts
+    visualizations, and a current-season schedule with expandable box scores.
 
     Template: team_details.html
     URL pattern: /teams/<slug>/  (slug is e.g. "duke-blue-devils")
@@ -103,6 +103,21 @@ class TeamDetailView(TemplateView):
     Context variables:
       team          — the Team model instance (for name, colors, venue, etc.)
       season_stats  — raw QuerySet list for any template-side iteration
+      schedule      — pre-processed list of dicts for the current season game table.
+                      Each dict contains:
+                        game        — Game object (date, venue, scores, etc.)
+                        is_home     — bool, True if this team was home
+                        opponent    — Team object for the other side
+                        team_points — int, this team's final score
+                        opp_points  — int, opponent's final score
+                        won         — bool, True if this team won
+                        home_stats  — GameTeamStats for the home team (or None)
+                        away_stats  — GameTeamStats for the away team (or None)
+                      Home/away logic is resolved here so the template doesn't
+                      need to branch on home_team vs away_team. Box score stats
+                      are prefetched via Prefetch('team_stats') and split into
+                      home_stats / away_stats by matching team_id against the
+                      Game's home_team_id.
       stat_years    — JSON array of season labels, used as chart x-axis categories
       wins/losses   — JSON arrays of per-season win/loss counts
       win_pct       — JSON array of win percentages (0-100 scale)
@@ -122,6 +137,12 @@ class TeamDetailView(TemplateView):
       3. The template injects them into <script> tags via {{ var|safe }}
       4. ApexCharts reads the arrays directly as JS variables
 
+    Query optimization:
+      The games query uses select_related('home_team', 'away_team') to avoid
+      N+1 hits when the template renders opponent names, and prefetch_related
+      with Prefetch('team_stats') to batch-load all GameTeamStats rows in a
+      single query rather than 2 per game row.
+
     Note: off_to_ratio is multiplied by 100 here because the API stores it
     as a decimal (e.g. 0.18) but we display it as a percentage (18.0).
     off_pts and opp_pts are computed as season totals divided by games
@@ -133,6 +154,56 @@ class TeamDetailView(TemplateView):
         context = super().get_context_data(**kwargs)
 
         team = get_object_or_404(Team, slug=self.kwargs['slug'])
+        current_year = date.today().year
+
+        # --- Build the current season game schedule with box scores ---
+        # Uses a Q(home_team) | Q(away_team) filter to get all games regardless
+        # of which side this team was on. select_related pre-loads both Team FKs
+        # in a single JOIN, and Prefetch loads all GameTeamStats rows in one
+        # separate query (2 rows per game × ~35 games = ~70 rows total).
+        games = Game.objects.filter(
+            Q(home_team=team) | Q(away_team=team),
+            season=current_year
+        ).select_related(
+            'home_team', 'away_team'
+        ).prefetch_related(
+            Prefetch(
+                'team_stats',
+                queryset=GameTeamStats.objects.select_related('team'),
+            )
+        ).order_by('start_date')
+
+        # Pre-process each game into a flat dict so the template can render
+        # the schedule table without any home/away conditional logic.
+        # The box score accordion needs both teams' stats, so we split the
+        # prefetched GameTeamStats into home_stats and away_stats by matching
+        # team_id against the Game's home_team FK.
+        schedule = []
+        for game in games:
+            is_home = game.home_team_id == team.id
+            opponent = game.away_team if is_home else game.home_team
+
+            # Split the two GameTeamStats rows into home/away for the template.
+            # .all() uses the prefetch cache — no additional DB query.
+            home_stats = None
+            away_stats = None
+            for stat in game.team_stats.all():
+                if stat.team_id == game.home_team_id:
+                    home_stats = stat
+                else:
+                    away_stats = stat
+
+            schedule.append({
+                'game': game,
+                'is_home': is_home,
+                'opponent': opponent,
+                'team_points': game.home_points if is_home else game.away_points,
+                'opp_points': game.away_points if is_home else game.home_points,
+                'won': game.home_winner if is_home else game.away_winner,
+                'home_stats': home_stats,   # GameTeamStats object or None
+                'away_stats': away_stats,   # GameTeamStats object or None
+            })
+        context['schedule'] = schedule
 
         # Order ascending so chart x-axis runs oldest → newest (left to right)
         season_stats = list(
