@@ -10,23 +10,31 @@
 #
 # Relationships at a glance:
 #   Conference  1 ── * Team  1 ── * TeamSeasonStats
+#                      Team  1 ── * Game (home_games)
+#                      Team  1 ── * Game (away_games)
+#                      Team  1 ── * GameTeamStats (game_stats)
+#                      Game  1 ── 2 GameTeamStats (team_stats)
 #
 #   conference.teams.all()          → all teams in a conference
 #   team.conference                 → the conference a team belongs to
 #   team.season_stats.all()         → every season row for a team
 #   team.current_season             → shortcut property returning the latest season stats object
 #   team.current_season.wins        → a specific stat field on that season
+#   team.home_games.all()           → all games where this team was home
+#   team.away_games.all()           → all games where this team was away
+#   team.game_stats.all()           → all per-game box score rows for a team
+#   game.home_team / game.away_team → the two teams in a game
+#   game.team_stats.all()           → both teams' box scores for a game (2 rows)
 #
 # Data source:
-#   All three models are populated by management commands that call service
-#   functions in services.py, which hit the CBBData API (https://cbbdata.asmith.uiuc.edu).
-#   Sync order matters: conferences → teams → season stats, because each layer
-#   depends on foreign keys from the layer above.
+#   All models are populated by management commands that call service functions
+#   in services.py, which hit the CBBData API (https://cbbdata.asmith.uiuc.edu).
+#   Sync order matters — foreign keys create dependencies:
+#     1. conferences → 2. teams → 3. season_stats → 4. games → 5. game_team_stats
 
 from django.db import models
 from django.utils.text import slugify
 from .stats import win_percentage
-
 
 class Team(models.Model):
   """
@@ -132,7 +140,6 @@ class Team(models.Model):
   def __str__(self):
     return self.school
 
-
 class Conference(models.Model):
   """
   Represents an NCAA Division I basketball conference (e.g. ACC, Big Ten, SEC).
@@ -166,7 +173,6 @@ class Conference(models.Model):
 
   def __str__(self):
     return self.abbrv
-
 
 class TeamSeasonStats(models.Model):
   """
@@ -307,3 +313,219 @@ class TeamSeasonStats(models.Model):
 
   def __str__(self):
     return f"{self.team} — {self.season_label}"
+
+class Game(models.Model):
+  """
+  A single completed or scheduled game between two teams.
+
+  One row per game. Populated from the CBBData /games endpoint, which
+  provides the matchup metadata, final scores, venue, and Elo ratings.
+  This is the "schedule row" — what you'd see in a team's season schedule
+  table (date, opponent, score, W/L).
+
+  Key relationships:
+    game.home_team                → Team object for the home side
+    game.away_team                → Team object for the away side
+    team.home_games.all()         → all games where this team was home
+    team.away_games.all()         → all games where this team was away
+    game.team_stats.all()         → GameTeamStats rows (2 per game, one per team)
+
+  The /games endpoint returns one row per game with both teams' info
+  flattened (homeTeam/awayTeam, homePoints/awayPoints). We store both
+  FKs so you can query from either team's perspective.
+
+  Elo ratings:
+    homeTeamEloStart/End and awayTeamEloStart/End track each team's Elo
+    before and after the game. Useful for strength-of-schedule analysis
+    and as a potential feature for the prediction model.
+
+  Sync: populated by sync_games() in services.py via the `sync_games`
+  management command. The API caps at 3,000 games per request, so the
+  fetch is split into monthly date-range windows (Nov → May) to capture
+  the full ~5,500-game season including postseason tournaments.
+  """
+
+  # --- Identity ---
+  id = models.BigAutoField(primary_key=True)
+  source_id = models.CharField(max_length=50, null=True, blank=True)   # API's string ID for this game
+  season = models.IntegerField()                                       # e.g. 2025 for the 2025-26 season
+  season_label = models.CharField(max_length=20)                       # e.g. "2025-26"
+  season_type = models.CharField(max_length=20, null=True, blank=True) # "regular", "postseason"
+  tournament = models.CharField(max_length=100, null=True, blank=True) # e.g. "NCAA Tournament", "NIT"
+  game_type = models.CharField(max_length=50, null=True, blank=True)
+  game_notes = models.TextField(null=True, blank=True)
+  status = models.CharField(max_length=20, null=True, blank=True)      # "scheduled", "completed", "canceled"
+
+  # --- Date / time ---
+  start_date = models.DateTimeField(null=True, blank=True)
+  start_time_tbd = models.BooleanField(default=False)
+
+  # --- Home team ---
+  home_team = models.ForeignKey(
+    'Team',
+    on_delete=models.CASCADE,
+    related_name='home_games',   # team.home_games.all()
+    null=True, blank=True,
+  )
+  home_conference = models.ForeignKey(
+    'Conference',
+    on_delete=models.SET_NULL,
+    related_name='+',            # no reverse lookup needed
+    null=True, blank=True,
+  )
+  home_seed = models.IntegerField(null=True, blank=True)         # tournament seed, if applicable
+  home_points = models.IntegerField(null=True, blank=True)
+  home_period_points = models.JSONField(null=True, blank=True)   # list of ints, e.g. [35, 43]
+  home_winner = models.BooleanField(null=True, blank=True)
+  home_elo_start = models.FloatField(null=True, blank=True)      # Elo rating entering the game
+  home_elo_end = models.FloatField(null=True, blank=True)        # Elo rating after the game
+
+  # --- Away team ---
+  away_team = models.ForeignKey(
+    'Team',
+    on_delete=models.CASCADE,
+    related_name='away_games',   # team.away_games.all()
+    null=True, blank=True,
+  )
+  away_conference = models.ForeignKey(
+    'Conference',
+    on_delete=models.SET_NULL,
+    related_name='+',
+    null=True, blank=True,
+  )
+  away_seed = models.IntegerField(null=True, blank=True)
+  away_points = models.IntegerField(null=True, blank=True)
+  away_period_points = models.JSONField(null=True, blank=True)
+  away_winner = models.BooleanField(null=True, blank=True)
+  away_elo_start = models.FloatField(null=True, blank=True)
+  away_elo_end = models.FloatField(null=True, blank=True)
+
+  # --- Venue / context ---
+  neutral_site = models.BooleanField(default=False)
+  conference_game = models.BooleanField(default=False)           # was this an in-conference matchup?
+  attendance = models.IntegerField(null=True, blank=True)
+  venue_id = models.IntegerField(null=True, blank=True)
+  venue = models.CharField(max_length=200, null=True, blank=True)
+  city = models.CharField(max_length=100, null=True, blank=True)
+  state = models.CharField(max_length=50, null=True, blank=True)
+
+  # --- Analytics ---
+  excitement = models.FloatField(null=True, blank=True)          # API-computed excitement index
+
+  class Meta:
+    ordering = ['-start_date']       # most recent games first
+    indexes = [
+      models.Index(fields=['season', 'home_team']),
+      models.Index(fields=['season', 'away_team']),
+    ]
+
+  def __str__(self):
+    return f"{self.home_team} vs {self.away_team} — {self.season_label}"
+
+class GameTeamStats(models.Model):
+  """
+  Per-team box score stats for a single game.
+
+  Two rows per game — one for each team. Populated from the CBBData
+  /games/teams endpoint, which returns one row per team per game with
+  the full stat breakdown (shooting, four factors, rebounds, etc.).
+
+  Key relationships:
+    stat.game                   → the Game this row belongs to
+    stat.team                   → the Team this row is for
+    game.team_stats.all()       → both teams' stats for this game
+    team.game_stats.all()       → all game-level stats for a team
+
+  The field structure intentionally mirrors TeamSeasonStats so that
+  template code and chart configs can be reused across season-level
+  and game-level views with minimal changes.
+
+  The /games/teams endpoint also returns some matchup metadata (opponent,
+  isHome, etc.) which overlaps with the Game model. We store those on
+  Game and only keep the stat fields here to avoid duplication.
+
+  Sync: populated by sync_game_team_stats() in services.py, which runs
+  after sync_games() as part of `python manage.py sync_games`. The API
+  returns 2 rows per game (one per team) and caps at 3,000 rows per
+  request, so fetches are split into monthly windows. Keyed on
+  (game, team) via unique_together to prevent duplicate rows on re-sync.
+  """
+
+  # --- Identity ---
+  game = models.ForeignKey(
+    'Game',
+    on_delete=models.CASCADE,
+    related_name='team_stats',   # game.team_stats.all()
+  )
+  team = models.ForeignKey(
+    'Team',
+    on_delete=models.CASCADE,
+    related_name='game_stats',   # team.game_stats.all()
+  )
+  is_home = models.BooleanField(default=True)   # was this team the home team in this game?
+
+  # --- Pace / tempo ---
+  game_minutes = models.FloatField(null=True, blank=True)
+  pace = models.FloatField(null=True, blank=True)              # possessions per 40 min for this game
+  possessions = models.FloatField(null=True, blank=True)
+
+  # --- Shooting ---
+  fg_made = models.FloatField(null=True, blank=True)
+  fg_attempted = models.FloatField(null=True, blank=True)
+  fg_pct = models.FloatField(null=True, blank=True)
+
+  two_pt_made = models.FloatField(null=True, blank=True)
+  two_pt_attempted = models.FloatField(null=True, blank=True)
+  two_pt_pct = models.FloatField(null=True, blank=True)
+
+  three_pt_made = models.FloatField(null=True, blank=True)
+  three_pt_attempted = models.FloatField(null=True, blank=True)
+  three_pt_pct = models.FloatField(null=True, blank=True)
+
+  ft_made = models.FloatField(null=True, blank=True)
+  ft_attempted = models.FloatField(null=True, blank=True)
+  ft_pct = models.FloatField(null=True, blank=True)
+
+  # --- Counting stats ---
+  points = models.IntegerField(null=True, blank=True)
+  assists = models.IntegerField(null=True, blank=True)
+  steals = models.IntegerField(null=True, blank=True)
+  blocks = models.IntegerField(null=True, blank=True)
+  turnovers = models.IntegerField(null=True, blank=True)
+  team_turnovers = models.IntegerField(null=True, blank=True)   # team-level TOs (shot clock, etc.)
+
+  # --- Rebounds ---
+  reb_total = models.IntegerField(null=True, blank=True)
+  reb_offensive = models.IntegerField(null=True, blank=True)
+  reb_defensive = models.IntegerField(null=True, blank=True)
+
+  # --- Fouls ---
+  fouls_total = models.IntegerField(null=True, blank=True)
+  fouls_technical = models.IntegerField(null=True, blank=True)
+  fouls_flagrant = models.IntegerField(null=True, blank=True)
+
+  # --- Points breakdown ---
+  points_fast_break = models.IntegerField(null=True, blank=True)
+  points_off_turnovers = models.IntegerField(null=True, blank=True)
+  points_in_paint = models.IntegerField(null=True, blank=True)
+  points_by_period = models.JSONField(null=True, blank=True)     # list of ints per half/OT
+  largest_lead = models.IntegerField(null=True, blank=True)
+
+  # --- Four Factors (game-level) ---
+  # Same metrics as TeamSeasonStats but for a single game.
+  eff_fg_pct = models.FloatField(null=True, blank=True)         # effective FG%
+  ft_rate = models.FloatField(null=True, blank=True)            # FTA / FGA
+  oreb_pct = models.FloatField(null=True, blank=True)           # offensive rebound %
+  turnover_ratio = models.FloatField(null=True, blank=True)     # turnovers per 100 possessions
+
+  # --- Advanced ---
+  rating = models.FloatField(null=True, blank=True)             # offensive rating for this game
+  true_shooting = models.FloatField(null=True, blank=True)      # TS%
+  game_score = models.FloatField(null=True, blank=True)         # composite game score metric
+
+  class Meta:
+    unique_together = ('game', 'team')  # one stat row per team per game
+    ordering = ['-game__start_date']
+
+  def __str__(self):
+    return f"{self.team} — Game {self.game_id}"
