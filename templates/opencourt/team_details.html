@@ -86,27 +86,72 @@
                 <div class="bg-base-300 px-4 py-5">
                   {# Team name headers #}
                   <div class="grid grid-cols-[1fr_auto_1fr] gap-x-4 mb-4 px-2">
-                    <div class="text-left font-bold text-sm">{{ row.game.home_team.display_name }}</div>
-                    <div class="w-20"></div>
-                    <div class="text-right font-bold text-sm">{{ row.game.away_team.display_name }}</div>
+                    <div class="text-right font-bold text-sm">{{ row.game.home_team.display_name }}</div>
+                    <div class="text-center w-10">VS.</div>
+                    <div class="text-left font-bold text-sm">{{ row.game.away_team.display_name }}</div>
                   </div>
 
                   {# Stat rows — each row is a 3-column grid: home bar | label | away bar #}
-                  <div class="boxscore-stats space-y-2"
+                  <div class="boxscore-stats space-y-1"
                        data-home-color="{{ row.game.home_team.primary_color|default:'#6366f1' }}"
                        data-away-color="{{ row.game.away_team.primary_color|default:'#ef4444' }}">
 
                     {% with hs=row.home_stats aws=row.away_stats %}
-                    <div class="stat-row" data-home="{{ hs.points|default_if_none:0 }}" data-away="{{ aws.points|default_if_none:0 }}" data-label="PTS"></div>
-                    <div class="stat-row" data-home="{{ hs.fg_pct|default_if_none:0 }}" data-away="{{ aws.fg_pct|default_if_none:0 }}" data-label="FG%" data-home-display="{% if hs.fg_made is not None %}{{ hs.fg_made|floatformat:0 }}-{{ hs.fg_attempted|floatformat:0 }}{% endif %}" data-away-display="{% if aws.fg_made is not None %}{{ aws.fg_made|floatformat:0 }}-{{ aws.fg_attempted|floatformat:0 }}{% endif %}"></div>
-                    <div class="stat-row" data-home="{{ hs.three_pt_pct|default_if_none:0 }}" data-away="{{ aws.three_pt_pct|default_if_none:0 }}" data-label="3PT%" data-home-display="{% if hs.three_pt_made is not None %}{{ hs.three_pt_made|floatformat:0 }}-{{ hs.three_pt_attempted|floatformat:0 }}{% endif %}" data-away-display="{% if aws.three_pt_made is not None %}{{ aws.three_pt_made|floatformat:0 }}-{{ aws.three_pt_attempted|floatformat:0 }}{% endif %}"></div>
-                    <div class="stat-row" data-home="{{ hs.ft_pct|default_if_none:0 }}" data-away="{{ aws.ft_pct|default_if_none:0 }}" data-label="FT%" data-home-display="{% if hs.ft_made is not None %}{{ hs.ft_made|floatformat:0 }}-{{ hs.ft_attempted|floatformat:0 }}{% endif %}" data-away-display="{% if aws.ft_made is not None %}{{ aws.ft_made|floatformat:0 }}-{{ aws.ft_attempted|floatformat:0 }}{% endif %}"></div>
-                    <div class="stat-row" data-home="{{ hs.reb_total|default_if_none:0 }}" data-away="{{ aws.reb_total|default_if_none:0 }}" data-label="REB"></div>
-                    <div class="stat-row" data-home="{{ hs.reb_offensive|default_if_none:0 }}" data-away="{{ aws.reb_offensive|default_if_none:0 }}" data-label="OREB"></div>
-                    <div class="stat-row" data-home="{{ hs.assists|default_if_none:0 }}" data-away="{{ aws.assists|default_if_none:0 }}" data-label="AST"></div>
-                    <div class="stat-row" data-home="{{ hs.steals|default_if_none:0 }}" data-away="{{ aws.steals|default_if_none:0 }}" data-label="STL"></div>
-                    <div class="stat-row" data-home="{{ hs.blocks|default_if_none:0 }}" data-away="{{ aws.blocks|default_if_none:0 }}" data-label="BLK"></div>
-                    <div class="stat-row" data-home="{{ hs.turnovers|default_if_none:0 }}" data-away="{{ aws.turnovers|default_if_none:0 }}" data-label="TO"></div>
+                    <div class="stat-row"
+                         data-home="{{ hs.points|default_if_none:0 }}"
+                         data-away="{{ aws.points|default_if_none:0 }}"
+                         data-label="PTS">
+                    </div>
+                    <div class="stat-row"
+                         data-home="{{ hs.fg_pct|default_if_none:0 }}"
+                         data-away="{{ aws.fg_pct|default_if_none:0 }}"
+                         data-label="FG%"
+                         data-home-display="{% if hs.fg_made is not None %}{{ hs.fg_made|floatformat:0 }}-{{ hs.fg_attempted|floatformat:0 }}{% endif %}"
+                         data-away-display="{% if aws.fg_made is not None %}{{ aws.fg_made|floatformat:0 }}-{{ aws.fg_attempted|floatformat:0 }}{% endif %}">
+                    </div>
+                    <div class="stat-row"
+                         data-home="{{ hs.three_pt_pct|default_if_none:0 }}"
+                         data-away="{{ aws.three_pt_pct|default_if_none:0 }}"
+                         data-label="3PT%"
+                         data-home-display="{% if hs.three_pt_made is not None %}{{ hs.three_pt_made|floatformat:0 }}-{{ hs.three_pt_attempted|floatformat:0 }}{% endif %}"
+                         data-away-display="{% if aws.three_pt_made is not None %}{{ aws.three_pt_made|floatformat:0 }}-{{ aws.three_pt_attempted|floatformat:0 }}{% endif %}">
+                    </div>
+                    <div class="stat-row"
+                         data-home="{{ hs.ft_pct|default_if_none:0 }}"
+                         data-away="{{ aws.ft_pct|default_if_none:0 }}"
+                         data-label="FT%"
+                         data-home-display="{% if hs.ft_made is not None %}{{ hs.ft_made|floatformat:0 }}-{{ hs.ft_attempted|floatformat:0 }}{% endif %}"
+                         data-away-display="{% if aws.ft_made is not None %}{{ aws.ft_made|floatformat:0 }}-{{ aws.ft_attempted|floatformat:0 }}{% endif %}">
+                    </div>
+                    <div class="stat-row"
+                         data-home="{{ hs.reb_total|default_if_none:0 }}"
+                         data-away="{{ aws.reb_total|default_if_none:0 }}"
+                         data-label="REB"></div>
+                    <div class="stat-row"
+                         data-home="{{ hs.reb_offensive|default_if_none:0 }}"
+                         data-away="{{ aws.reb_offensive|default_if_none:0 }}"
+                         data-label="OREB">
+                    </div>
+                    <div class="stat-row"
+                         data-home="{{ hs.assists|default_if_none:0 }}"
+                         data-away="{{ aws.assists|default_if_none:0 }}"
+                         data-label="AST">
+                    </div>
+                    <div class="stat-row"
+                         data-home="{{ hs.steals|default_if_none:0 }}"
+                         data-away="{{ aws.steals|default_if_none:0 }}"
+                         data-label="STL">
+                    </div>
+                    <div class="stat-row"
+                         data-home="{{ hs.blocks|default_if_none:0 }}"
+                         data-away="{{ aws.blocks|default_if_none:0 }}"
+                         data-label="BLK">
+                    </div>
+                    <div class="stat-row"
+                         data-home="{{ hs.turnovers|default_if_none:0 }}"
+                         data-away="{{ aws.turnovers|default_if_none:0 }}"
+                         data-label="TO">
+                    </div>
                     {% endwith %}
                   </div>
                 </div>
@@ -378,7 +423,7 @@
 
         // Using inline styles for bar track width instead of flex-1 to avoid
         // potential collapse in nested grid/flex contexts.
-        el.className = 'grid grid-cols-[1fr_80px_1fr] gap-x-3 items-center px-2';
+        el.className = 'grid grid-cols-[1fr_40px_1fr] gap-x-3 items-center px-2';
         el.innerHTML =
           `<div style="display:flex; align-items:center; gap:8px;">
             <span class="text-xs font-medium" style="width:48px; text-align:right; flex-shrink:0;">${homeDisplay}</span>
