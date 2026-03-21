@@ -22,3 +22,4 @@ class Command(BaseCommand):
     call_command('sync_conferences')
     call_command('sync_teams')
     call_command('sync_season_stats')
+    call_command('sync_games')
