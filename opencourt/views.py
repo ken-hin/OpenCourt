@@ -26,6 +26,7 @@ import json
 from datetime import date
 from django.db.models import Prefetch, Q
 from django.views.generic import TemplateView, ListView
+from django.db.models import Case, When, Value, OuterRef, Subquery, FloatField, F, ExpressionWrapper
 from django.shortcuts import get_object_or_404
 from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats
 
@@ -91,6 +92,51 @@ class ConferenceListView(ListView):
         )
       ).all()
 
+
+class RankingsListView(ListView):
+    """Renders the rankings page."""
+
+    model = Team
+    template_name = 'opencourt/rankings.html'
+
+    def get_queryset(self):
+        """Return teams ordered by their latest season performance.
+
+        The queryset fetches each team's most recent season stats (by season)
+        and annotates the Team queryset with those values, which keeps the
+        template simple and avoids N+1 queries.
+        """
+
+        # Build a subquery for the most recent TeamSeasonStats row per team.
+        latest_stats = (
+            TeamSeasonStats.objects
+            .filter(team=OuterRef('pk'))
+            .order_by('-season')
+        )
+
+        # Small helper to pull a single scalar value from the latest stats row.
+        def latest(field_name):
+            return Subquery(latest_stats.values(field_name)[:1], output_field=FloatField())
+
+        return (
+            Team.objects
+            .select_related('conference')
+            .prefetch_related('season_stats')
+            .annotate(
+                latest_wins=latest('wins'),
+                latest_losses=latest('losses'),
+                latest_off_points=latest('off_points'),
+                latest_opp_points=latest('opp_points'),
+            )
+            .annotate(
+                # Point margin is useful for ranking and display purposes.
+                latest_point_margin=ExpressionWrapper(
+                    F('latest_off_points') - F('latest_opp_points'),
+                    output_field=FloatField(),
+                )
+            )
+            .order_by('-latest_wins')
+        )
 
 class TeamDetailView(TemplateView):
     """
