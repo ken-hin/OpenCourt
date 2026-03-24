@@ -23,3 +23,4 @@ class Command(BaseCommand):
     call_command('sync_teams')
     call_command('sync_season_stats')
     call_command('sync_games')
+    call_command('sync_rankings')
