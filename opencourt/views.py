@@ -55,9 +55,6 @@ class TeamListView(ListView):
     model = Team
     template_name = 'opencourt/teams.html'
 
-    def get_queryset(self):
-      return Team.objects.all()
-
 
 class ConferenceListView(ListView):
     """
@@ -217,7 +214,7 @@ class TeamDetailView(TemplateView):
                 'team_stats',
                 queryset=GameTeamStats.objects.select_related('team'),
             )
-        ).order_by('start_date')
+        ).order_by('-start_date')
 
         # Pre-process each game into a flat dict so the template can render
         # the schedule table without any home/away conditional logic.
@@ -300,7 +297,7 @@ class TeamDetailView(TemplateView):
         context['oreb_pct'] = json.dumps(off_oreb_pct)
         context['ft_rate'] = json.dumps(off_ft_rate)
 
-        context['3pt_pct'] = json.dumps(off_3pt_pct)
+        context['three_pt_pct'] = json.dumps(off_3pt_pct)
         context['off_pts'] = json.dumps(off_pts)
         context['opp_pts'] = json.dumps(opp_pts)
         return context

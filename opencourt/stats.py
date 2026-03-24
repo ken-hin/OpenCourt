@@ -2,11 +2,11 @@
 
 # Calculates win percentage using the wins and losses from the TeamSeasonUnitStats as documented in the api
 # Percent is given as a whole number
-# EDGE CASE: will raise ZeroDivisionError if both wins and losses are 0 (i.e. a team with no games played).
-# This shouldn't occur with real API data mid-season, but should be handled before this function
-# is called from a view or exposed to user input.
+# EDGE CASE: when total_games == 0 (i.e. a team with no games played), returns 0.0
 def win_percentage(wins, losses):
     total_games = wins + losses
+    if total_games == 0:
+        return 0.0
     percent_wins = round((wins / total_games) * 100, 2) # Just decided to round 2 digits.
     return percent_wins
 
