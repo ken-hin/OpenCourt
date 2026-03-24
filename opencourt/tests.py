@@ -45,3 +45,11 @@ class WinPercentTest(TestCase):
             0,
             msg="Win percentage is calculated correctly"
         )
+
+    def test_win_test_4(self):
+        """Team with no games: 0 wins, 0 losses → 0.0%."""
+        self.assertEqual(
+            stats.win_percentage(0, 0),
+            0.0,
+            msg="Win percentage handles zero games correctly"
+        )
