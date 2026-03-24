@@ -605,6 +605,13 @@ def sync_all_season_stats():
     created_count, updated_count, skipped_count, ignored_count, len(seasons)
   )
 
+  # Warn if ignored count is high, indicating potential school name drift between APIs
+  if ignored_count > 100:
+    logger.warning(
+      "High ignored count (%d) detected — check for school name mismatches between teams and stats APIs.",
+      ignored_count
+    )
+
 
 # =============================================================================
 # Game Fetch Functions

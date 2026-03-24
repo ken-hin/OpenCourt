@@ -314,7 +314,7 @@ class TeamSeasonStats(models.Model):
       return None
     return point_differential(self.off_points, self.opp_points)
 
-  class Meta :
+  class Meta:
     unique_together = ('team', 'season')
     ordering = ['-season']
 
