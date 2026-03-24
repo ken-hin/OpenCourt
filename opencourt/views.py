@@ -46,7 +46,11 @@ class TeamListView(ListView):
     Displays all Division I teams in a filterable list.
 
     Template: teams.html
-    Context variable: team_list (auto-named by ListView from the model)
+    Context variables:
+      team_list        — all Team objects (auto-named by ListView from the model),
+                         each with conference select_related to avoid N+1 on card rendering.
+      conference_list  — all Conference objects, added via get_context_data for the
+                         conference filter dropdown.
 
     The template supports client-side filtering by conference using JS —
     no server-side filtering is needed since the full team list is small
@@ -54,6 +58,14 @@ class TeamListView(ListView):
     """
     model = Team
     template_name = 'opencourt/teams.html'
+
+    def get_queryset(self):
+      return Team.objects.select_related('conference').order_by('school')
+
+    def get_context_data(self, **kwargs):
+      context = super().get_context_data(**kwargs)
+      context['conference_list'] = Conference.objects.order_by('abbrv')
+      return context
 
 
 class ConferenceListView(ListView):
