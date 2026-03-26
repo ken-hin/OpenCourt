@@ -317,4 +317,16 @@ class TeamDetailView(TemplateView):
 
 class UpcomingView(TemplateView):
     template_name = 'opencourt/head_head.html'
-    # will need to be all upcoming scheduled games 
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        games = (
+            Game.objects
+            .filter(status="scheduled")
+            .select_related('home_team', 'away_team')
+            .order_by('start_date')
+        )
+
+        context['games'] = games
+        return context

@@ -1,10 +1,145 @@
 {% extends 'base.html' %}
-
-{% block title %}About — OpenCourt{% endblock %}
+{% load static %}
+{% block title %}Matchups — OpenCourt{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto py-12 px-6">
-    <h1 class="text-4xl font-bold mb-4">Upcoming</h1>
-    <p>This will be upcoming</p>
+
+<div class="container mx-auto py-15">
+
+  <!-- Header -->
+  <div class="mx-15 my-7">
+    <h1 class="text-3xl font-bold">Matchups</h1>
+    <p class="text-base-content/60">
+      {{ games|length }} games available
+    </p>
+  </div>
+
+  <!-- Game Cards -->
+  <div class="flex flex-col gap-4 mx-15">
+
+    {% for game in games %}
+        <div class="card bg-base-200 shadow-md p-4">
+            <!-- Top Row -->
+            <div class="flex justify-between text-sm opacity-70">
+                <span>{{ game.start_date }}</span>
+                <span>{{ game.venue }}</span>
+            </div>
+
+            <!-- Matchup -->
+            <div class="grid grid-cols-3 items-center mt-3">
+                <!-- Home Team -->
+                <div class="text-left">
+                <div class="grid grid-cols-2 gap-0">
+                    <div class="text-left">
+                    <p class="font-bold text-4xl">{{ game.home_team.abbrv }}</p>
+                    </div>
+                    <div class="text-left -ml-8">
+                    <p class="font-semibold">{{ game.home_team.school }}</p>
+                    <p class="text-xs opacity-60">{{ game.home_team.current_season.wins|floatformat:0 }} - {{ game.home_team.current_season.losses|floatformat:0 }}</p>
+                    <p class="text-xs opacity-60">Home</p>
+                    </div>
+                </div>
+                </div>
+
+                <!-- VS -->
+                <div class="text-center font-bold text-lg">
+                <div class="text-2xl">VS</div>
+                <div class="text-xs opacity-60">OUR Prediction</div>
+                </div>
+
+                <!-- Away Team -->
+                <div class="text-right ml-20">
+                <div class="grid grid-cols-2 gap-0">
+                    <div class="text-right">
+                    <p class="font-semibold">{{ game.away_team.school }}</p>
+                    <p class="text-xs opacity-60">{{ game.home_team.current_season.wins|floatformat:0 }} - {{ game.away_team.current_season.losses|floatformat:0 }}</p>
+                    <p class="text-xs opacity-60">Away</p>
+                    </div>
+                    <div class="text-right">
+                    <p class="font-bold text-4xl">{{ game.away_team.abbrv }}</p>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+            <!-- Dropdown using details/summary -->
+            <details class="mt-4 border-t border-base-300 pt-2 text-center">
+            <summary class="cursor-pointer font-semibold text-primary hover:text-primary-focus">
+                Show Stats
+            </summary>
+
+            <div class="mt-2 overflow-x-auto">
+                <table class="table-auto w-full text-center text-sm">
+                <thead>
+                    <tr>
+                    <th class="px-2">Home</th>
+                    <th class="px-2">Stat</th>
+                    <th class="px-2">Away</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-base-300">
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_points }}</td>
+                    <td class="px-2">PTS</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_points }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_fg_pct }}</td>
+                    <td class="px-2">FG%</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_fg_pct }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_3pt_pct }}</td>
+                    <td class="px-2">3PT%</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_3pt_pct }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_ft_pct }}</td>
+                    <td class="px-2">FT%</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_ft_pct }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_reb_total }}</td>
+                    <td class="px-2">REB</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_reb_total }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_reb_offensive }}</td>
+                    <td class="px-2">OREB</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_reb_offensive }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_assists }}</td>
+                    <td class="px-2">AST</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_assists }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_steals }}</td>
+                    <td class="px-2">STL</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_steals }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_blocks }}</td>
+                    <td class="px-2">BLK</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_blocks }}</td>
+                    </tr>
+                    <tr>
+                    <td class="px-2">{{ game.home_team.current_season.off_turnovers }}</td>
+                    <td class="px-2">TO</td>
+                    <td class="px-2">{{ game.away_team.current_season.off_turnovers }}</td>
+                    </tr>
+                </tbody>
+                </table>
+            </div>
+            </details>
+
+        </div>
+    {% empty %}
+      <p class="mx-15">No games found</p>
+    {% endfor %}
+
+  </div>
+
 </div>
+
 {% endblock %}
