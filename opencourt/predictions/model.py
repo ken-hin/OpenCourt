@@ -41,7 +41,7 @@ def load_model(path=None):
         return _model
 
     if path is None:
-        # Check Django settings for a custom path
+      # Check Django settings for a custom path (NEED TO ADD IN SETTINGS.PY)
         try:
             from django.conf import settings
             path = getattr(settings, 'PREDICTION_MODEL_PATH', None)
