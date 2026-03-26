@@ -5,11 +5,22 @@
 # and the ML pipeline.
 #
 # Used by:
-#   - predict.py  (at request time, called from views)
-#   - train_model.py (to build the training dataset from historical seasons)
+#   - predict.py  (at request time, called from views — Django already running)
+#   - train_model.py (standalone — calls django.setup() before importing this)
 #
-# When running standalone (for testing), Django must be initialized first.
-# See the __main__ block at the bottom.
+# When running this file directly (for testing), Django is initialized
+# below before any model imports.
+
+import os, sys
+
+# ── Django setup (must happen BEFORE importing any Django models) ────────
+# When imported from a Django view, Django is already configured and this
+# is a no-op. When run standalone, this bootstraps the ORM.
+if not os.environ.get('DJANGO_SETTINGS_MODULE'):
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+    import django
+    django.setup()
 
 from datetime import date
 from opencourt.models import TeamSeasonStats, Team
@@ -126,13 +137,7 @@ def get_feature_names():
 
 # ── Standalone testing ───────────────────────────────────────────────────
 if __name__ == '__main__':
-    import os, sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-
-    import django
-    django.setup()
-
+    # Django is already set up at the top of this file.
     # Quick smoke test: pick two teams and print their features
     team1 = Team.objects.filter(school__icontains='Duke').first()
     team2 = Team.objects.filter(school__icontains='North Carolina').first()
