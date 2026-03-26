@@ -314,7 +314,7 @@ class TeamSeasonStats(models.Model):
       return None
     return point_differential(self.off_points, self.opp_points)
 
-  class Meta :
+  class Meta:
     unique_together = ('team', 'season')
     ordering = ['-season']
 
@@ -536,3 +536,40 @@ class GameTeamStats(models.Model):
 
   def __str__(self):
     return f"{self.team} — Game {self.game_id}"
+  
+class Ranking(models.Model):
+  """
+  A single team's ranking in a poll for a specific week and season.
+
+  One row per team per poll per week. Populated by the `sync_rankings`
+  management command. Keyed on (season, season_type, week, poll_type, team)
+  via unique_together to prevent duplicate rows on re-sync.
+  """
+
+  team = models.ForeignKey(
+    'Team',
+    on_delete=models.CASCADE,
+    related_name='rankings',    # team.rankings.all()
+    null=True, blank=True,
+  )
+  season = models.IntegerField()
+  season_type = models.CharField(max_length=50, null=True, blank=True)   # "regular", "postseason"
+  week = models.IntegerField(null=True, blank=True)
+  poll_date = models.DateTimeField(null=True, blank=True)
+  poll_type = models.CharField(max_length=100, null=True, blank=True)    # e.g. "AP", "Coaches"
+  conference = models.ForeignKey(
+    'Conference',
+    on_delete=models.SET_NULL,
+    related_name='+',
+    null=True, blank=True,
+  )
+  ranking = models.IntegerField(null=True, blank=True)
+  points = models.IntegerField(null=True, blank=True)
+  first_place_votes = models.IntegerField(null=True, blank=True)
+
+  class Meta:
+    unique_together = ('season', 'season_type', 'week', 'poll_type', 'team')
+    ordering = ['-season', '-week', 'ranking']
+
+  def __str__(self):
+    return f"{self.team} — #{self.ranking} ({self.poll_type}, Week {self.week}, {self.season})"

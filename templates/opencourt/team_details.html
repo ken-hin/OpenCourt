@@ -11,7 +11,7 @@
 {#                                                                             #}
 {# Context variables used:                                                     #}
 {#   team, schedule, stat_years, wins, losses, win_pct, off_rtg, opp_rtg,      #}
-{#   eff_fg, to_ratio, oreb_pct, ft_rate, 3pt_pct, off_pts, opp_pts            #}
+{#   eff_fg, to_ratio, oreb_pct, ft_rate, three_pt_pct, off_pts, opp_pts            #}
 {#                                                                             #}
 {# JS dependencies: ApexCharts (loaded in base.html)                           #}
 {#   - toggleBoxScore(id): toggles the hidden accordion row for box scores     #}
@@ -205,7 +205,7 @@
     const winPct = {{ win_pct|safe }};
     const offRtg = {{ off_rtg|safe }};
     const oppRtg = {{ opp_rtg|safe }};
-    const threePct = {{ 3pt_pct|safe }};
+    const threePct = {{ three_pt_pct|safe }};
     const effFg = {{ eff_fg|safe }};
     const TO_ratio = {{ to_ratio|safe }};
     const oreb_pct = {{ oreb_pct|safe }};

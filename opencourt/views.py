@@ -46,7 +46,11 @@ class TeamListView(ListView):
     Displays all Division I teams in a filterable list.
 
     Template: teams.html
-    Context variable: team_list (auto-named by ListView from the model)
+    Context variables:
+      team_list        — all Team objects (auto-named by ListView from the model),
+                         each with conference select_related to avoid N+1 on card rendering.
+      conference_list  — all Conference objects, added via get_context_data for the
+                         conference filter dropdown.
 
     The template supports client-side filtering by conference using JS —
     no server-side filtering is needed since the full team list is small
@@ -56,7 +60,12 @@ class TeamListView(ListView):
     template_name = 'opencourt/teams.html'
 
     def get_queryset(self):
-      return Team.objects.all()
+      return Team.objects.select_related('conference').order_by('school')
+
+    def get_context_data(self, **kwargs):
+      context = super().get_context_data(**kwargs)
+      context['conference_list'] = Conference.objects.order_by('abbrv')
+      return context
 
 
 class ConferenceListView(ListView):
@@ -217,7 +226,7 @@ class TeamDetailView(TemplateView):
                 'team_stats',
                 queryset=GameTeamStats.objects.select_related('team'),
             )
-        ).order_by('start_date')
+        ).order_by('-start_date')
 
         # Pre-process each game into a flat dict so the template can render
         # the schedule table without any home/away conditional logic.
@@ -300,7 +309,7 @@ class TeamDetailView(TemplateView):
         context['oreb_pct'] = json.dumps(off_oreb_pct)
         context['ft_rate'] = json.dumps(off_ft_rate)
 
-        context['3pt_pct'] = json.dumps(off_3pt_pct)
+        context['three_pt_pct'] = json.dumps(off_3pt_pct)
         context['off_pts'] = json.dumps(off_pts)
         context['opp_pts'] = json.dumps(opp_pts)
         return context
