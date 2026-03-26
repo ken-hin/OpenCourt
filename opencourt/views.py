@@ -313,3 +313,8 @@ class TeamDetailView(TemplateView):
         context['off_pts'] = json.dumps(off_pts)
         context['opp_pts'] = json.dumps(opp_pts)
         return context
+
+
+class UpcomingView(TemplateView):
+    template_name = 'opencourt/head_head.html'
+    # will need to be all upcoming scheduled games 

@@ -15,6 +15,7 @@ urlpatterns = [
     path('about/', views.AboutView.as_view(), name='about'),
     path('teams/', views.TeamListView.as_view(), name='teams'),
     path('conferences/', views.ConferenceListView.as_view(), name='conferences'),
+    path('upcoming/', views.UpcomingView.as_view(), name="upcoming"),
     path('rankings/', views.RankingsListView.as_view(), name='rankings'),
     path('<slug:slug>/', views.TeamDetailView.as_view(), name='team-detail'),
 ]
