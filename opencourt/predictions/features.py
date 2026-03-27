@@ -1,3 +1,10 @@
+# features.py — Create a dataframe using the teams classes
+#
+# Simply calculates the necessary features using the TeamSeasonStats data 
+# and puts it into a dataframe to prep for predictions
+
+
+
 #Import necessary libraries
 import django
 import os

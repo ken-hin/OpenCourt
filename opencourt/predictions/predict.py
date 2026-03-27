@@ -1,3 +1,15 @@
+# predict.py — Create a dataframe using the teams classes
+#
+# Opens the model file and makes predictions based on the teams and parameters given,
+# Makes a call to features build_features() function to get the features
+# Predict is called through: from opencourt.predict import make_predictions
+# Make predictions takes in two team classes and a path to the model file locations
+# NOTE: home advantage has the following encoding depending on who has it.
+# home_advantage = 1: Means team_a has advantage
+# home_advantage = -1: Means team_b has advantage
+# home_advantage = 0: Means no team has advantage
+
+
 from .features import build_features
 from ..models import TeamSeasonStats
 import pickle
