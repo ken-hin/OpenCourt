@@ -23,7 +23,7 @@
 #     '_current_stats') so stats are loaded in bulk rather than per-team.
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from django.db.models import Prefetch, Q
 from django.views.generic import TemplateView, ListView
 from django.db.models import Case, When, Value, OuterRef, Subquery, FloatField, F, ExpressionWrapper
@@ -314,19 +314,160 @@ class TeamDetailView(TemplateView):
         context['opp_pts'] = json.dumps(opp_pts)
         return context
 
-
 class UpcomingView(TemplateView):
+    """
+    Upcoming games page with head-to-head stat comparison.
+
+    Template: opencourt/head_head.html
+
+    URL params:
+      ?date=YYYY-MM-DD  — filter games to a specific date (defaults to today)
+      ?date=all         — show every future scheduled game in chronological order
+
+    Context variables:
+      games           — enriched list of dicts for the selected date (or all
+                        dates if show_all=True). Used by the main #games-list.
+      all_games       — enriched list of ALL future scheduled games in order.
+                        Always passed regardless of selected tab. Used by the
+                        hidden #search-results pool so the search input can
+                        find any team across the full schedule without a reload.
+      show_all        — bool, True when ?date=all was requested. The template
+                        uses this to highlight the "Show All" tab and adjust
+                        the page subtitle.
+      upcoming_dates  — list of date objects for the next 7 days, for the tabs.
+      selected_date   — the date currently being viewed (None when show_all).
+      today           — date.today() so the template can label the first tab.
+      tomorrow        — today + 1 day for the second tab label.
+
+    Query optimizations:
+      select_related('home_team', 'away_team') avoids FK hits per game.
+      Two Prefetch calls bulk-load each team's current-season stats so
+      Team.current_season never fires individual queries inside the loop.
+    """
     template_name = 'opencourt/head_head.html'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        games = (
-            Game.objects
-            .filter(status="scheduled")
-            .select_related('home_team', 'away_team')
-            .order_by('start_date')
-        )
+        today    = date.today()
+        tomorrow = today + timedelta(days=1)
 
-        context['games'] = games
+        # 7-day window for the tab bar
+        upcoming_dates = [today + timedelta(days=i) for i in range(7)]
+
+        # Determine whether "Show All" was requested
+        date_param = self.request.GET.get('date', str(today))
+        show_all   = (date_param == 'all')
+
+        if show_all:
+            selected_date = None
+        else:
+            try:
+                selected_date = date.fromisoformat(date_param)
+            except ValueError:
+                selected_date = today
+
+        current_year = date.today().year
+
+        # ── Shared prefetch setup ────────────────────────────────────────
+        # Both querysets use the same select_related + Prefetch structure.
+        # Defined once here to keep things DRY.
+        def base_qs():
+            return (
+                Game.objects
+                .filter(status="scheduled")
+                .select_related('home_team', 'away_team')
+                .prefetch_related(
+                    Prefetch(
+                        'home_team__season_stats',
+                        queryset=TeamSeasonStats.objects.filter(season=current_year),
+                        to_attr='_current_stats',
+                    ),
+                    Prefetch(
+                        'away_team__season_stats',
+                        queryset=TeamSeasonStats.objects.filter(season=current_year),
+                        to_attr='_current_stats',
+                    ),
+                )
+                .order_by('start_date')
+            )
+
+        # ── Per-game average helpers ─────────────────────────────────────
+        def avg(stat_obj, field):
+            """Divide a season total by games played → per-game average."""
+            if stat_obj is None:
+                return None
+            total       = getattr(stat_obj, field, None)
+            games_played = getattr(stat_obj, 'games', None)
+            if total and games_played:
+                return round(total / games_played, 1)
+            return None
+
+        def pct(stat_obj, field):
+            """Round a field already stored as a percentage (e.g. 46.3)."""
+            if stat_obj is None:
+                return None
+            val = getattr(stat_obj, field, None)
+            return round(val, 1) if val is not None else None
+
+        # ── Enrich a queryset into the template-friendly list of dicts ───
+        def enrich(qs):
+            result = []
+            for game in qs:
+                hs  = game.home_team.current_season   # TeamSeasonStats or None
+                as_ = game.away_team.current_season
+                result.append({
+                    'game':      game,
+                    'home_team': game.home_team,
+                    'away_team': game.away_team,
+                    'home_stats': {
+                        'pts':  avg(hs,  'off_points'),
+                        'fgp':  pct(hs,  'off_fg_pct'),
+                        'tpp':  pct(hs,  'off_3pt_pct'),
+                        'ftp':  pct(hs,  'off_ft_pct'),
+                        'reb':  avg(hs,  'off_reb_total'),
+                        'oreb': avg(hs,  'off_reb_offensive'),
+                        'ast':  avg(hs,  'off_assists'),
+                        'stl':  avg(hs,  'off_steals'),
+                        'blk':  avg(hs,  'off_blocks'),
+                        'tov':  avg(hs,  'off_turnovers'),
+                    },
+                    'away_stats': {
+                        'pts':  avg(as_, 'off_points'),
+                        'fgp':  pct(as_, 'off_fg_pct'),
+                        'tpp':  pct(as_, 'off_3pt_pct'),
+                        'ftp':  pct(as_, 'off_ft_pct'),
+                        'reb':  avg(as_, 'off_reb_total'),
+                        'oreb': avg(as_, 'off_reb_offensive'),
+                        'ast':  avg(as_, 'off_assists'),
+                        'stl':  avg(as_, 'off_steals'),
+                        'blk':  avg(as_, 'off_blocks'),
+                        'tov':  avg(as_, 'off_turnovers'),
+                    },
+                })
+            return result
+
+        # ── Build the two querysets ──────────────────────────────────────
+        # all_future_qs: every scheduled game from today forward.
+        #   Always computed — feeds both all_games (for search) and
+        #   games when show_all=True.
+        all_future_qs = base_qs().filter(start_date__gte=today)
+
+        if show_all:
+            games_qs = all_future_qs
+        else:
+            games_qs = base_qs().filter(start_date__date=selected_date)
+
+        # Enrich both. all_games is always the full future schedule so search
+        # works regardless of which date tab the user has open.
+        all_games = enrich(all_future_qs)
+        games     = enrich(games_qs)
+
+        context['games']          = games
+        context['all_games']      = all_games
+        context['show_all']       = show_all
+        context['upcoming_dates'] = upcoming_dates
+        context['selected_date']  = selected_date
+        context['today']          = today
+        context['tomorrow']       = tomorrow
         return context
