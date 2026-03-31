@@ -28,7 +28,7 @@ from django.db.models import Prefetch, Q
 from django.views.generic import TemplateView, ListView
 from django.db.models import Case, When, Value, OuterRef, Subquery, FloatField, F, ExpressionWrapper
 from django.shortcuts import get_object_or_404
-from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats
+from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats, Ranking
 
 
 class HomeView(TemplateView):
@@ -101,36 +101,56 @@ class ConferenceListView(ListView):
         )
       ).all()
 
+class RankingsListView(TemplateView):
+    """
+    Renders dual-poll rankings page (AP Top 25 + Coaches Poll side by side)
+    with week-by-week navigation via ?week=N query parameter.
 
-class RankingsListView(ListView):
-    """Renders the rankings page."""
+    Defaults to the most recent week when no parameter is provided.
 
-    model = Team
+    Template: rankings.html
+    Context variables:
+      ap_rankings       — Ranking queryset for the selected week's AP poll
+      coaches_rankings  — Ranking queryset for the selected week's Coaches Poll
+      ap_poll_date      — datetime of the selected AP poll week
+      coaches_poll_date — datetime of the selected Coaches Poll week
+      available_weeks   — list of dicts [{week, poll_date}, ...] for the week
+                          dropdown, ordered newest-first
+      selected_week     — int, the currently displayed week number
+      conference_list   — all conferences for the filter dropdown
+    """
+
     template_name = 'opencourt/rankings.html'
 
-    def get_queryset(self):
-        """Return teams ordered by their latest season performance.
-
-        The queryset fetches each team's most recent season stats (by season)
-        and annotates the Team queryset with those values, which keeps the
-        template simple and avoids N+1 queries.
+    def _ranked_teams(self, poll_type, week=None):
         """
+        Return (poll_date, queryset) for a given poll_type and week in the
+        current season. If week is None, returns the most recent week.
+        """
+        current_year = date.today().year
+        base_qs = Ranking.objects.filter(poll_type=poll_type, season=current_year)
 
-        # Build a subquery for the most recent TeamSeasonStats row per team.
+        if week is not None:
+            poll_date = base_qs.filter(week=week).values_list('poll_date', flat=True).first()
+        else:
+            poll_date = base_qs.order_by('-poll_date').values_list('poll_date', flat=True).first()
+
+        if not poll_date:
+            return None, Ranking.objects.none()
+
+        # Subquery helper for the most recent season stats row per team.
         latest_stats = (
             TeamSeasonStats.objects
-            .filter(team=OuterRef('pk'))
+            .filter(team=OuterRef('team__pk'))
             .order_by('-season')
         )
-
-        # Small helper to pull a single scalar value from the latest stats row.
         def latest(field_name):
             return Subquery(latest_stats.values(field_name)[:1], output_field=FloatField())
 
-        return (
-            Team.objects
-            .select_related('conference')
-            .prefetch_related('season_stats')
+        qs = (
+            Ranking.objects
+            .filter(poll_type=poll_type, poll_date=poll_date, ranking__gte=1, ranking__lte=25)
+            .select_related('team', 'team__conference')
             .annotate(
                 latest_wins=latest('wins'),
                 latest_losses=latest('losses'),
@@ -138,14 +158,50 @@ class RankingsListView(ListView):
                 latest_opp_points=latest('opp_points'),
             )
             .annotate(
-                # Point margin is useful for ranking and display purposes.
                 latest_point_margin=ExpressionWrapper(
                     F('latest_off_points') - F('latest_opp_points'),
                     output_field=FloatField(),
                 )
             )
-            .order_by('-latest_wins')
+            .order_by('ranking')
         )
+
+        return poll_date, qs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        current_year = date.today().year
+
+        # Build available weeks list for the dropdown (newest first).
+        available_weeks = list(
+            Ranking.objects
+            .filter(poll_type="AP Top 25", season=current_year)
+            .values('week', 'poll_date')
+            .distinct()
+            .order_by('-week')
+        )
+
+        # Read ?week= param, default to most recent week.
+        selected_week = self.request.GET.get('week')
+        if selected_week is not None:
+            try:
+                selected_week = int(selected_week)
+            except (ValueError, TypeError):
+                selected_week = None
+        if selected_week is None and available_weeks:
+            selected_week = available_weeks[0]['week']
+
+        ap_date, ap_qs = self._ranked_teams("AP Top 25", week=selected_week)
+        coaches_date, coaches_qs = self._ranked_teams("Coaches Poll", week=selected_week)
+
+        context['ap_rankings'] = ap_qs
+        context['coaches_rankings'] = coaches_qs
+        context['ap_poll_date'] = ap_date
+        context['coaches_poll_date'] = coaches_date
+        context['available_weeks'] = available_weeks
+        context['selected_week'] = selected_week
+        context['conference_list'] = Conference.objects.order_by('abbrv')
+        return context
 
 class TeamDetailView(TemplateView):
     """
