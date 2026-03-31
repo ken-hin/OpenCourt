@@ -24,7 +24,8 @@
 
 import json
 from datetime import date, timedelta
-from django.db.models import Prefetch, Q
+from django.db import models
+from django.db.models import Prefetch, Q, Count, Avg, Sum
 from django.views.generic import TemplateView, ListView
 from django.db.models import Case, When, Value, OuterRef, Subquery, FloatField, F, ExpressionWrapper
 from django.shortcuts import get_object_or_404
@@ -77,12 +78,12 @@ class ConferenceListView(ListView):
     Context variable: conference_list (auto-named by ListView from the model)
 
     Queryset optimizations:
-      - prefetch_related('teams') prevents an extra query per conference when
-        the template loops over conference.teams.all.
+      - prefetch_related('teams') with ordering by win_pct descending for conference rankings
       - Prefetch('teams__season_stats', ..., to_attr='_current_stats') loads
         only the current season's stats for every team in a single query.
         This feeds the Team.current_season property so the template can
         access {{ team.current_season.wins }} without any additional DB hits.
+      - Annotations for conference stats: team_count, avg_win_pct, total_wins, total_losses
 
     The template filters out conferences with 0 teams (non-D1 or empty
     conferences that came from the API) using {% if conference.teams.count > 0 %}.
@@ -93,12 +94,25 @@ class ConferenceListView(ListView):
     def get_queryset(self):
       current_year = date.today().year
       return Conference.objects.prefetch_related(
-        'teams',
+        Prefetch(
+          'teams',
+          queryset=Team.objects.annotate(
+            current_win_pct=Subquery(
+              TeamSeasonStats.objects.filter(team=OuterRef('pk'), season=current_year).values('win_pct')[:1],
+              output_field=FloatField()
+            )
+          ).order_by('-current_win_pct'),
+        ),
         Prefetch(
           'teams__season_stats',
           queryset=TeamSeasonStats.objects.filter(season=current_year),
           to_attr='_current_stats'
         )
+      ).annotate(
+        team_count=Count('teams', distinct=True),
+        avg_win_pct=Avg('teams__season_stats__win_pct', filter=Q(teams__season_stats__season=current_year), distinct=True),
+        total_wins=Sum('teams__season_stats__wins', filter=Q(teams__season_stats__season=current_year), distinct=True),
+        total_losses=Sum('teams__season_stats__losses', filter=Q(teams__season_stats__season=current_year), distinct=True),
       ).all()
 
 class RankingsListView(TemplateView):
