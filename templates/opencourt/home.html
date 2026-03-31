@@ -5,161 +5,23 @@
 
 {% extends 'base.html' %}
 
-{% block title %}OpenCourt - College Basketball Analytics{% endblock %}
+{% block title %}OpenCourt{% endblock %}
 
 {% block extra_css %}
 <style>
     @keyframes fade-in {
-        from { opacity: 0; transform: translateY(20px); }
-        to   { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; }
+        to   { opacity: 1; }
     }
 
     .fade-in {
-        animation: fade-in 0.8s ease forwards;
-    }
-
-    .hero-gradient {
-        background: linear-gradient(135deg, #1f2937 0%, #374151 50%, #1f2937 100%);
-    }
-
-    .stat-card {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .nav-card {
-        transition: all 0.3s ease;
-    }
-
-    .nav-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        animation: fade-in 1.75s ease forwards;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
-<div class="hero-gradient text-white">
-    <div class="container mx-auto px-4 py-20">
-        <div class="text-center fade-in">
-            <h1 class="text-6xl font-bold mb-4">🏀 OpenCourt</h1>
-            <p class="text-xl mb-8 text-gray-300 max-w-2xl mx-auto">
-                Your premier destination for college basketball statistics, rankings, and analytics.
-                Track teams, conferences, and games with real-time data.
-            </p>
-            <div class="flex flex-wrap justify-center gap-4 mb-12">
-                <a href="{% url 'teams' %}" class="btn btn-primary btn-lg">Browse Teams</a>
-                <a href="{% url 'conferences' %}" class="btn btn-outline btn-lg">View Conferences</a>
-                <a href="{% url 'rankings' %}" class="btn btn-outline btn-lg">Check Rankings</a>
-            </div>
-        </div>
-
-        <!-- Quick Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            <div class="stat-card rounded-lg p-6 text-center fade-in" style="animation-delay: 0.2s">
-                <div class="text-3xl font-bold text-orange-400">{{ total_teams }}</div>
-                <div class="text-sm text-gray-300">Division I Teams</div>
-            </div>
-            <div class="stat-card rounded-lg p-6 text-center fade-in" style="animation-delay: 0.4s">
-                <div class="text-3xl font-bold text-orange-400">{{ total_conferences }}</div>
-                <div class="text-sm text-gray-300">Conferences</div>
-            </div>
-            <div class="stat-card rounded-lg p-6 text-center fade-in" style="animation-delay: 0.6s">
-                <div class="text-3xl font-bold text-orange-400">2024-25</div>
-                <div class="text-sm text-gray-300">Current Season</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Top Teams Section -->
-<div class="py-16 bg-base-200">
-    <div class="container mx-auto px-4">
-        <h2 class="text-4xl font-bold text-center mb-12">Top Teams This Season</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-            {% for team in top_teams %}
-            <div class="card bg-base-100 shadow-lg fade-in" style="animation-delay: {{ forloop.counter0 }}00ms">
-                <div class="card-body p-4">
-                    <div class="flex items-center gap-3 mb-3">
-                        {% if team.primary_color %}
-                        <div class="w-4 h-4 rounded-full" style="background-color: {{ team.primary_color }}"></div>
-                        {% endif %}
-                        <h3 class="card-title text-lg">{{ team.short_display_name }}</h3>
-                    </div>
-                    {% if team.conference %}
-                    <p class="text-sm text-gray-600 mb-2">{{ team.conference.abbrv }}</p>
-                    {% endif %}
-                    {% if team.current_season %}
-                    <div class="text-sm">
-                        <div class="font-semibold">{{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}</div>
-                        <div class="text-gray-600">{{ team.current_season.win_pct|floatformat:1 }}% Win Rate</div>
-                    </div>
-                    {% else %}
-                    <div class="text-sm text-gray-500">No stats yet</div>
-                    {% endif %}
-                    <div class="card-actions justify-end mt-3">
-                        <a href="{% url 'team_detail' team.slug %}" class="btn btn-primary btn-sm">View Team</a>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-
-<!-- Navigation Cards -->
-<div class="py-16">
-    <div class="container mx-auto px-4">
-        <h2 class="text-4xl font-bold text-center mb-12">Explore College Basketball</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <a href="{% url 'teams' %}" class="nav-card card bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
-                <div class="card-body items-center text-center">
-                    <div class="text-4xl mb-4">🏆</div>
-                    <h3 class="card-title">Teams</h3>
-                    <p>Browse all Division I teams with detailed stats and rankings</p>
-                </div>
-            </a>
-
-            <a href="{% url 'conferences' %}" class="nav-card card bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
-                <div class="card-body items-center text-center">
-                    <div class="text-4xl mb-4">🏟️</div>
-                    <h3 class="card-title">Conferences</h3>
-                    <p>Explore conferences with team rankings and league stats</p>
-                </div>
-            </a>
-
-            <a href="{% url 'rankings' %}" class="nav-card card bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-lg">
-                <div class="card-body items-center text-center">
-                    <div class="card-title">Rankings</div>
-                    <p>Check current AP Poll and other ranking systems</p>
-                </div>
-            </a>
-
-            <a href="{% url 'about' %}" class="nav-card card bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg">
-                <div class="card-body items-center text-center">
-                    <div class="text-4xl mb-4">ℹ️</div>
-                    <h3 class="card-title">About</h3>
-                    <p>Learn about OpenCourt and our data sources</p>
-                </div>
-            </a>
-        </div>
-    </div>
-</div>
-
-<!-- Featured Conferences -->
-<div class="py-16 bg-base-200">
-    <div class="container mx-auto px-4">
-        <h2 class="text-4xl font-bold text-center mb-12">Major Conferences</h2>
-        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-            {% for conference in conferences %}
-            <a href="{% url 'conferences' %}" class="btn btn-outline btn-lg hover:btn-primary transition-all">
-                {{ conference.abbrv }}
-                <div class="text-xs opacity-70">{{ conference.team_count }} teams</div>
-            </a>
-            {% endfor %}
-        </div>
-    </div>
+<div class="flex items-center justify-center min-h-screen">
+    <h1 class="text-7xl font-bold fade-in">OpenCourt</h1>
 </div>
 {% endblock %}
