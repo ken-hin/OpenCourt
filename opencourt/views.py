@@ -29,7 +29,7 @@ from django.views.generic import TemplateView, ListView
 from django.db.models import Case, When, Value, OuterRef, Subquery, FloatField, F, ExpressionWrapper
 from django.shortcuts import get_object_or_404
 from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats, Ranking
-
+from opencourt.predictions.predict import make_predictions as predict_game
 
 class HomeView(TemplateView):
     """Landing page. No dynamic data — just renders the static home template."""
@@ -467,15 +467,34 @@ class UpcomingView(TemplateView):
             return round(val, 1) if val is not None else None
 
         # ── Enrich a queryset into the template-friendly list of dicts ───
+        # Runs the prediction model per game inside the loop so each game
+        # dict carries its own prediction result.
         def enrich(qs):
             result = []
             for game in qs:
                 hs  = game.home_team.current_season   # TeamSeasonStats or None
                 as_ = game.away_team.current_season
+
+                # Run prediction if both teams have season stats.
+                # predict_game expects two TeamSeasonStats objects and
+                # home_advantage: 1 = team_a home, -1 = team_b home, 0 = neutral
+                prediction = None
+                if hs and as_:
+                    home_adv = 0 if game.neutral_site else 1
+                    pred = predict_game(hs, as_, home_adv)
+                    # pred is a numpy array ([1] = team_a wins, [0] = team_b wins)
+                    # or 1 on error (model file not found)
+                    if pred is not None and pred != 1:
+                        prediction = {
+                            'winner': game.home_team if pred[0] == 1 else game.away_team,
+                            'is_home_win': bool(pred[0] == 1),
+                        }
+
                 result.append({
-                    'game':      game,
-                    'home_team': game.home_team,
-                    'away_team': game.away_team,
+                    'game':       game,
+                    'home_team':  game.home_team,
+                    'away_team':  game.away_team,
+                    'prediction': prediction,
                     'home_stats': {
                         'pts':  avg(hs,  'off_points'),
                         'fgp':  pct(hs,  'off_fg_pct'),
@@ -516,6 +535,7 @@ class UpcomingView(TemplateView):
 
         # Enrich both. all_games is always the full future schedule so search
         # works regardless of which date tab the user has open.
+        # Predictions are embedded per-game inside enrich().
         all_games = enrich(all_future_qs)
         games     = enrich(games_qs)
 

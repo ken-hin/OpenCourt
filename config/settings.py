@@ -64,7 +64,7 @@ TAILWIND_APP_NAME = 'theme'
 # it differs per machine.
 # Common macOS paths: /usr/local/bin/npm (Intel) or /opt/homebrew/bin/npm (Apple Silicon)
 # Common Windows path: C:\Program Files\nodejs\npm.cmd
-NPM_BIN_PATH = os.environ.get('NPM_BIN_PATH', 'npm')
+# NPM_BIN_PATH = os.environ.get('NPM_BIN_PATH', 'npm')
 
 # Required by django-browser-reload to inject the live-reload script only in
 # local dev. INTERNAL_IPS limits this to requests from your own machine.
@@ -201,4 +201,4 @@ LOGGING = {
   },
 }
 
-NPM_BIN_PATH = r"C:\Program Files\nodejs\npm.cmd"
+# NPM_BIN_PATH = r"C:\Program Files\nodejs\npm.cmd"

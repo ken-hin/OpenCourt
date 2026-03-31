@@ -90,24 +90,17 @@
             </div>
           </div>
 
-          {# VS block with optional win probability bar #}
+          {# VS block with prediction result #}
           <div class="text-center">
             <div class="font-bold text-xl">VS</div>
-            {% if item.game.home_win_prob %}
-              {# Win probability bar — replace home_win_prob with your model field name #}
-              <div class="flex items-center gap-1 mt-1 text-xs opacity-60 justify-center">
-                <span class="w-6 text-right">{{ item.home_team.abbrv }}</span>
-                <div class="flex-1 h-1.5 bg-base-300 rounded-full overflow-hidden mx-1 max-w-[60px]">
-                  <div class="h-full bg-primary rounded-full"
-                       style="width: {{ item.game.home_win_prob }}%"></div>
-                </div>
-                <span class="w-6 text-left">{{ item.away_team.abbrv }}</span>
+            {% if item.prediction %}
+              <div class="text-xs font-semibold mt-1">
+                {{ item.prediction.winner.display_name }}
               </div>
-              <div class="text-xs opacity-40 mt-0.5">
-                {{ item.game.home_win_prob }}% · {{ item.game.away_win_prob }}%
-              </div>
+              <div class="text-xs opacity-40 mt-0.5">Predicted Winner</div>
             {% else %}
-              <div class="text-xs opacity-40 mt-1">Prediction TBD</div>
+              <div class="text-xs opacity-40 mt-1">Prediction unavailable</div>
+              <div class="text-xs opacity-40 mt-0.5">{{ item.prediction.winner }}</div>
             {% endif %}
           </div>
 
@@ -325,17 +318,13 @@
 
           <div class="text-center">
             <div class="font-bold text-xl">VS</div>
-            {% if item.game.home_win_prob %}
-              <div class="flex items-center gap-1 mt-1 text-xs opacity-60 justify-center">
-                <span class="w-6 text-right">{{ item.home_team.abbrv }}</span>
-                <div class="flex-1 h-1.5 bg-base-300 rounded-full overflow-hidden mx-1 max-w-[60px]">
-                  <div class="h-full bg-primary rounded-full" style="width: {{ item.game.home_win_prob }}%"></div>
-                </div>
-                <span class="w-6 text-left">{{ item.away_team.abbrv }}</span>
+            {% if item.prediction %}
+              <div class="text-xs font-semibold mt-1">
+                {{ item.prediction.winner.display_name }}
               </div>
-              <div class="text-xs opacity-40 mt-0.5">{{ item.game.home_win_prob }}% · {{ item.game.away_win_prob }}%</div>
+              <div class="text-xs opacity-40 mt-0.5">Predicted Winner</div>
             {% else %}
-              <div class="text-xs opacity-40 mt-1">Prediction TBD</div>
+              <div class="text-xs opacity-40 mt-1">Prediction unavailable</div>
             {% endif %}
           </div>
 
