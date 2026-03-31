@@ -33,8 +33,36 @@ from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamSt
 
 
 class HomeView(TemplateView):
-    """Landing page. No dynamic data — just renders the static home template."""
+    """Landing page with featured teams, conferences, and stats."""
     template_name = 'opencourt/home.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Get top 5 teams by win percentage
+        top_teams = Team.objects.filter(
+            season_stats__season=2024  # Current season
+        ).select_related('conference').prefetch_related(
+            Prefetch('season_stats', queryset=TeamSeasonStats.objects.filter(season=2024), to_attr='_current_stats')
+        ).order_by('-season_stats__win_pct')[:5]
+
+        # Get all conferences with team counts
+        conferences = Conference.objects.annotate(
+            team_count=Count('teams', distinct=True)
+        ).order_by('-team_count')[:8]  # Top 8 by team count
+
+        # Get some overall stats
+        total_teams = Team.objects.count()
+        total_conferences = Conference.objects.count()
+
+        context.update({
+            'top_teams': top_teams,
+            'conferences': conferences,
+            'total_teams': total_teams,
+            'total_conferences': total_conferences,
+        })
+
+        return context
 
 
 class AboutView(TemplateView):
