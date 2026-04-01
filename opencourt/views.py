@@ -484,7 +484,7 @@ class UpcomingView(TemplateView):
                     pred = predict_game(hs, as_, home_adv)
                     # pred is a numpy array ([1] = team_a wins, [0] = team_b wins)
                     # or 1 on error (model file not found)
-                    if pred is not None and pred != 1:
+                    if pred is not None:
                         prediction = {
                             'winner': game.home_team if pred[0] == 1 else game.away_team,
                             'is_home_win': bool(pred[0] == 1),
