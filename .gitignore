@@ -86,6 +86,10 @@ htmlcov/
 .pytest_cache/
 
 
+# --- Jupyter Notebooks ---
+# Checkpoint folders created automatically when saving notebooks.
+.ipynb_checkpoints/
+
 # --- Miscellaneous ---
 # uv-generated placeholder (not needed for the Django project)
 main.py

@@ -24,6 +24,7 @@
 
 import json
 from datetime import date, datetime, timedelta
+import numpy as np
 from django.db.models import Prefetch, Q
 from django.views.generic import TemplateView, ListView
 from django.db.models import Case, When, Value, OuterRef, Subquery, FloatField, F, ExpressionWrapper
@@ -31,27 +32,22 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats, Ranking
 from opencourt.predictions.predict import make_predictions as predict_game
-
 class HomeView(TemplateView):
     """Landing page. No dynamic data — just renders the static home template."""
     template_name = 'opencourt/home.html'
-
-
 class AboutView(TemplateView):
     """Static about/info page. No model data needed."""
     template_name = 'opencourt/about.html'
-
-
 class TeamListView(ListView):
     """
     Displays all Division I teams in a filterable list.
 
     Template: teams.html
     Context variables:
-      team_list        — all Team objects (auto-named by ListView from the model),
-                         each with conference select_related to avoid N+1 on card rendering.
-      conference_list  — all Conference objects, added via get_context_data for the
-                         conference filter dropdown.
+      team_list — all Team objects (auto-named by ListView from the model),
+                  each with conference select_related to avoid N+1 on card rendering.
+      conference_list — all Conference objects, added via get_context_data for the
+                        conference filter dropdown.
 
     The template supports client-side filtering by conference using JS —
     no server-side filtering is needed since the full team list is small
@@ -67,8 +63,6 @@ class TeamListView(ListView):
       context = super().get_context_data(**kwargs)
       context['conference_list'] = Conference.objects.order_by('abbrv')
       return context
-
-
 class ConferenceListView(ListView):
     """
     Two-panel conference browser: left sidebar of conference buttons, right
@@ -101,7 +95,6 @@ class ConferenceListView(ListView):
           to_attr='_current_stats'
         )
       ).all()
-
 class RankingsListView(TemplateView):
     """
     Renders dual-poll rankings page (AP Top 25 + Coaches Poll side by side)
@@ -111,14 +104,14 @@ class RankingsListView(TemplateView):
 
     Template: rankings.html
     Context variables:
-      ap_rankings       — Ranking queryset for the selected week's AP poll
-      coaches_rankings  — Ranking queryset for the selected week's Coaches Poll
-      ap_poll_date      — datetime of the selected AP poll week
+      ap_rankings — Ranking queryset for the selected week's AP poll
+      coaches_rankings — Ranking queryset for the selected week's Coaches Poll
+      ap_poll_date — datetime of the selected AP poll week
       coaches_poll_date — datetime of the selected Coaches Poll week
-      available_weeks   — list of dicts [{week, poll_date}, ...] for the week
-                          dropdown, ordered newest-first
-      selected_week     — int, the currently displayed week number
-      conference_list   — all conferences for the filter dropdown
+      available_weeks — list of dicts [{week, poll_date}, ...] for the week
+                        dropdown, ordered newest-first
+      selected_week — int, the currently displayed week number
+      conference_list — all conferences for the filter dropdown
     """
 
     template_name = 'opencourt/rankings.html'
@@ -203,7 +196,6 @@ class RankingsListView(TemplateView):
         context['selected_week'] = selected_week
         context['conference_list'] = Conference.objects.order_by('abbrv')
         return context
-
 class TeamDetailView(TemplateView):
     """
     Detail page for a single team, showing historical stats, ApexCharts
@@ -213,35 +205,35 @@ class TeamDetailView(TemplateView):
     URL pattern: /teams/<slug>/  (slug is e.g. "duke-blue-devils")
 
     Context variables:
-      team          — the Team model instance (for name, colors, venue, etc.)
-      season_stats  — raw QuerySet list for any template-side iteration
-      schedule      — pre-processed list of dicts for the current season game table.
-                      Each dict contains:
-                        game        — Game object (date, venue, scores, etc.)
-                        is_home     — bool, True if this team was home
-                        opponent    — Team object for the other side
-                        team_points — int, this team's final score
-                        opp_points  — int, opponent's final score
-                        won         — bool, True if this team won
-                        home_stats  — GameTeamStats for the home team (or None)
-                        away_stats  — GameTeamStats for the away team (or None)
-                      Home/away logic is resolved here so the template doesn't
-                      need to branch on home_team vs away_team. Box score stats
-                      are prefetched via Prefetch('team_stats') and split into
-                      home_stats / away_stats by matching team_id against the
-                      Game's home_team_id.
-      stat_years    — JSON array of season labels, used as chart x-axis categories
-      wins/losses   — JSON arrays of per-season win/loss counts
-      win_pct       — JSON array of win percentages (0-100 scale)
-      off_rtg       — JSON array of offensive ratings (points per 100 possessions)
-      opp_rtg       — JSON array of defensive ratings (points allowed per 100 poss.)
-      eff_fg        — JSON array of effective FG% (Four Factors: shooting)
-      to_ratio      — JSON array of turnover ratio (Four Factors: ball security)
-      oreb_pct      — JSON array of offensive rebound % (Four Factors: rebounding)
-      ft_rate       — JSON array of free throw rate (Four Factors: free throws)
-      3pt_pct       — JSON array of 3-point shooting percentage
-      off_pts       — JSON array of points scored per game
-      opp_pts       — JSON array of points allowed per game
+      team — the Team model instance (for name, colors, venue, etc.)
+      season_stats — raw QuerySet list for any template-side iteration
+      schedule — pre-processed list of dicts for the current season game table.
+
+        Each dict contains:
+          game — Game object (date, venue, scores, etc.)
+          is_home — bool, True if this team was home
+          opponent — Team object for the other side
+          team_points — int, this team's final score
+          opp_points — int, opponent's final score
+          won — bool, True if this team won
+          home_stats — GameTeamStats for the home team (or None)
+          away_stats — GameTeamStats for the away team (or None)
+        Home/away logic is resolved here so the template doesn't need to branch on
+        home_team vs away_team. Box score stats are prefetched via Prefetch('team_stats')
+        and split into home_stats / away_stats by matching team_id against the Game's home_team_id.
+
+      stat_years — JSON array of season labels, used as chart x-axis categories
+      wins/losses — JSON arrays of per-season win/loss counts
+      win_pct — JSON array of win percentages (0-100 scale)
+      off_rtg — JSON array of offensive ratings (points per 100 possessions)
+      opp_rtg — JSON array of defensive ratings (points allowed per 100 poss.)
+      eff_fg — JSON array of effective FG% (Four Factors: shooting)
+      to_ratio — JSON array of turnover ratio (Four Factors: ball security)
+      oreb_pct — JSON array of offensive rebound % (Four Factors: rebounding)
+      ft_rate — JSON array of free throw rate (Four Factors: free throws)
+      3pt_pct — JSON array of 3-point shooting percentage
+      off_pts — JSON array of points scored per game
+      opp_pts — JSON array of points allowed per game
 
     How chart data flows to the frontend:
       1. This view builds Python lists from the season_stats QuerySet
@@ -328,9 +320,9 @@ class TeamDetailView(TemplateView):
         season_labels = [f'{s.season}' for s in season_stats]
 
         # Basic record
-        wins       = [int(s.wins) if s.wins is not None else None for s in season_stats]
-        losses     = [int(s.losses) if s.losses is not None else None for s in season_stats]
-        win_pct    = [round(s.win_pct, 1) if s.win_pct else None for s in season_stats]
+        wins = [int(s.wins) if s.wins is not None else None for s in season_stats]
+        losses = [int(s.losses) if s.losses is not None else None for s in season_stats]
+        win_pct = [round(s.win_pct, 1) if s.win_pct else None for s in season_stats]
 
         # Efficiency ratings (tempo-independent, best for cross-team comparison)
         off_rating = [round(s.off_rating, 1) if s.off_rating else None for s in season_stats]
@@ -338,14 +330,14 @@ class TeamDetailView(TemplateView):
 
         # Four Factors — the core predictive metrics in basketball analytics
         off_eff_fg_pct = [round(s.off_eff_fg_pct, 1) if s.off_eff_fg_pct else None for s in season_stats]
-        off_to_ratio   = [round(s.off_turnover_ratio*100, 1) if s.off_turnover_ratio else None for s in season_stats]
-        off_oreb_pct   = [round(s.off_oreb_pct, 1) if s.off_oreb_pct else None for s in season_stats]
-        off_ft_rate    = [round(s.off_ft_rate, 1)  if s.off_ft_rate else None for s in season_stats]
+        off_to_ratio = [round(s.off_turnover_ratio*100, 1) if s.off_turnover_ratio else None for s in season_stats]
+        off_oreb_pct = [round(s.off_oreb_pct, 1) if s.off_oreb_pct else None for s in season_stats]
+        off_ft_rate = [round(s.off_ft_rate, 1)  if s.off_ft_rate else None for s in season_stats]
 
         # Additional shooting & scoring (extend as the team view is built out)
         off_3pt_pct = [round(s.off_3pt_pct, 1) if s.off_3pt_pct else None for s in season_stats]
-        off_pts     = [round(s.off_points / s.games, 1) if s.off_points and s.games else None for s in season_stats]
-        opp_pts     = [round(s.opp_points / s.games, 1) if s.opp_points and s.games else None for s in season_stats]
+        off_pts = [round(s.off_points / s.games, 1) if s.off_points and s.games else None for s in season_stats]
+        opp_pts = [round(s.opp_points / s.games, 1) if s.opp_points and s.games else None for s in season_stats]
 
         # --- Pack context ---
         # The template references these keys directly in {{ var|safe }} tags
@@ -370,63 +362,61 @@ class TeamDetailView(TemplateView):
         context['off_pts'] = json.dumps(off_pts)
         context['opp_pts'] = json.dumps(opp_pts)
         return context
-
 class UpcomingView(TemplateView):
     """
     Upcoming games page with head-to-head stat comparison.
     Supports two modes controlled by the ?mode= query parameter:
 
-      ?mode=upcoming (default)  — future scheduled games
-      ?mode=results             — completed games with prediction vs actual outcome
+      ?mode=upcoming (default) — future scheduled games
+      ?mode=results — completed games with prediction vs actual outcome
 
     Template: opencourt/head_head.html
 
     URL params (upcoming mode):
-      ?date=YYYY-MM-DD  — filter games to a specific date (defaults to today)
-      ?date=all         — show every future scheduled game in chronological order
+      ?date=YYYY-MM-DD — filter games to a specific date (defaults to today)
+      ?date=all — show every future scheduled game in chronological order
 
     URL params (results mode):
-      ?date=YYYY-MM-DD  — filter completed games to a specific date
-      ?date=all         — show all completed games this season (default for results)
+      ?date=YYYY-MM-DD — filter completed games to a specific date
+      ?date=all — show all completed games this season (default for results)
 
     Context variables:
-      mode            — "upcoming" or "results"
-      games           — enriched list of dicts for the selected date/filter.
-      all_games       — enriched list of ALL games for search (future for upcoming,
-                        completed for results).
-      show_all        — bool, True when ?date=all was requested.
-      upcoming_dates  — list of date objects for the next 7 days (upcoming mode),
-                        or last 7 days (results mode).
-      selected_date   — the date currently being viewed (None when show_all).
-      today           — date.today()
-      tomorrow        — today + 1 day
+      mode — "upcoming" or "results"
+      games — enriched list of dicts for the selected date/filter.
+      all_games — enriched list of ALL games for search (future for upcoming, completed for results).
+      show_all — bool, True when ?date=all was requested.
+      upcoming_dates — list of date objects for the next 7 days (upcoming mode), or last 7 days (results mode).
+      selected_date — the date currently being viewed (None when show_all).
+      today — date.today()
+      tomorrow — today + 1 day
 
       Results-mode extras:
-        accuracy        — dict with 'correct', 'total', 'pct' summarising
-                          prediction hit rate across the displayed games.
+        accuracy — dict with 'correct', 'total', 'pct' summarizing prediction hit rate across the displayed games.
     """
     template_name = 'opencourt/head_head.html'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        today    = date.today()
+        today = date.today()
         tomorrow = today + timedelta(days=1)
 
-        # College basketball season spans two calendar years (e.g. 2025-26).
-        # The season field stores the starting year. Games from Nov-Dec use
-        # the same year; games from Jan onward are year-1.
-        # If we're in Jan–Jun, the season started last year; Jul–Dec it's this year.
+        # Season field stores the starting year.
+        # Games from Nov-Dec use same year, and games from Jan onward are year-1.
         season_year = today.year if today.month >= 7 else today.year - 1
 
         # Timezone-aware "start of today" for DateTimeField comparisons
         today_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
 
-        # ── Mode: upcoming (default) vs results ─────────────────────────
+        # Mode: upcoming (default) vs. results
         mode = self.request.GET.get('mode', 'upcoming')
         if mode not in ('upcoming', 'results'):
             mode = 'upcoming'
-        results_mode = (mode == 'results')
+
+        if mode == 'results':
+          results_mode = True
+        else:
+          results_mode = False
 
         # Date tabs: next 7 days for upcoming, last 7 days for results
         if results_mode:
@@ -437,7 +427,7 @@ class UpcomingView(TemplateView):
         # Determine whether "Show All" was requested
         # Results mode defaults to "all" when no date param is given
         date_param = self.request.GET.get('date', 'all' if results_mode else str(today))
-        show_all   = (date_param == 'all')
+        show_all = (date_param == 'all')
 
         if show_all:
             selected_date = None
@@ -447,7 +437,7 @@ class UpcomingView(TemplateView):
             except ValueError:
                 selected_date = today
 
-        # ── Shared prefetch setup ────────────────────────────────────────
+        # ─────────────────────────── Shared prefetch setup ───────────────────────────
         def base_qs(status_filter):
             return (
                 Game.objects
@@ -468,7 +458,7 @@ class UpcomingView(TemplateView):
                 .order_by('-start_date' if results_mode else 'start_date')
             )
 
-        # ── Per-game average helpers ─────────────────────────────────────
+        # ───────────────────────────── Per-game average helpers ─────────────────────────────
         def avg(stat_obj, field):
             if stat_obj is None:
                 return None
@@ -484,21 +474,23 @@ class UpcomingView(TemplateView):
             val = getattr(stat_obj, field, None)
             return round(val, 1) if val is not None else None
 
-        # ── Enrich a queryset into the template-friendly list of dicts ───
-        def enrich(qs):
+        # ──────────────── Enrich queryset into template-friendly list of dicts ──────────────
+        def enrich_qs(qs):
             result = []
             for game in qs:
-                hs  = game.home_team.current_season
-                as_ = game.away_team.current_season
+                h_stats  = game.home_team.current_season
+                a_stats = game.away_team.current_season
 
                 # Run prediction — wrapped in try/except because build_features()
                 # will crash if any stat field is None (division/subtraction on None).
                 prediction = None
-                if hs and as_:
+                if h_stats and a_stats:
                     home_adv = 0 if game.neutral_site else 1
                     try:
-                        pred = predict_game(hs, as_, home_adv)
-                        if pred is not None and pred != 1:
+                        pred = predict_game(h_stats, a_stats, home_adv)
+                        # predict_game returns a numpy array on success
+                        # or 1 (int) on error.
+                        if type(pred) is np.ndarray:
                             prediction = {
                                 'winner': game.home_team if pred[0] == 1 else game.away_team,
                                 'is_home_win': bool(pred[0] == 1),
@@ -509,7 +501,7 @@ class UpcomingView(TemplateView):
 
                 # Actual result (only meaningful for completed games)
                 actual = None
-                if game.home_winner is not None:
+                if (game.home_winner and game.away_winner) is not None:
                     actual = {
                         'winner': game.home_team if game.home_winner else game.away_team,
                         'home_points': game.home_points,
@@ -522,46 +514,43 @@ class UpcomingView(TemplateView):
                     prediction_correct = (prediction['winner'].id == actual['winner'].id)
 
                 result.append({
-                    'game':       game,
-                    'home_team':  game.home_team,
-                    'away_team':  game.away_team,
+                    'game': game,
+                    'home_team': game.home_team,
+                    'away_team': game.away_team,
                     'prediction': prediction,
-                    'actual':     actual,
+                    'actual': actual,
                     'prediction_correct': prediction_correct,
                     'home_stats': {
-                        'pts':  avg(hs,  'off_points'),
-                        'fgp':  pct(hs,  'off_fg_pct'),
-                        'tpp':  pct(hs,  'off_3pt_pct'),
-                        'ftp':  pct(hs,  'off_ft_pct'),
-                        'reb':  avg(hs,  'off_reb_total'),
-                        'oreb': avg(hs,  'off_reb_offensive'),
-                        'ast':  avg(hs,  'off_assists'),
-                        'stl':  avg(hs,  'off_steals'),
-                        'blk':  avg(hs,  'off_blocks'),
-                        'tov':  avg(hs,  'off_turnovers'),
+                        'pts': avg(h_stats,  'off_points'),
+                        'fgp': pct(h_stats,  'off_fg_pct'),
+                        'tpp': pct(h_stats,  'off_3pt_pct'),
+                        'ftp': pct(h_stats,  'off_ft_pct'),
+                        'reb': avg(h_stats,  'off_reb_total'),
+                        'oreb':avg(h_stats,  'off_reb_offensive'),
+                        'ast': avg(h_stats,  'off_assists'),
+                        'stl': avg(h_stats,  'off_steals'),
+                        'blk': avg(h_stats,  'off_blocks'),
+                        'tov': avg(h_stats,  'off_turnovers'),
                     },
                     'away_stats': {
-                        'pts':  avg(as_, 'off_points'),
-                        'fgp':  pct(as_, 'off_fg_pct'),
-                        'tpp':  pct(as_, 'off_3pt_pct'),
-                        'ftp':  pct(as_, 'off_ft_pct'),
-                        'reb':  avg(as_, 'off_reb_total'),
-                        'oreb': avg(as_, 'off_reb_offensive'),
-                        'ast':  avg(as_, 'off_assists'),
-                        'stl':  avg(as_, 'off_steals'),
-                        'blk':  avg(as_, 'off_blocks'),
-                        'tov':  avg(as_, 'off_turnovers'),
+                        'pts': avg(a_stats, 'off_points'),
+                        'fgp': pct(a_stats, 'off_fg_pct'),
+                        'tpp': pct(a_stats, 'off_3pt_pct'),
+                        'ftp': pct(a_stats, 'off_ft_pct'),
+                        'reb': avg(a_stats, 'off_reb_total'),
+                        'oreb':avg(a_stats, 'off_reb_offensive'),
+                        'ast': avg(a_stats, 'off_assists'),
+                        'stl': avg(a_stats, 'off_steals'),
+                        'blk': avg(a_stats, 'off_blocks'),
+                        'tov': avg(a_stats, 'off_turnovers'),
                     },
                 })
             return result
 
-        # ── Build querysets based on mode ────────────────────────────────
+        # ────────────────────────── Build querysets based on mode ───────────────────────────
         if results_mode:
             # Finished games with results, newest first.
-            # The API uses status="final" (not "completed") for finished games.
-            finished_qs = base_qs("final").filter(
-                home_winner__isnull=False,
-            )
+            finished_qs = base_qs("final").filter(home_winner__isnull=False)
 
             if show_all:
                 # Cap at most recent 50 games so the page loads quickly
@@ -572,7 +561,7 @@ class UpcomingView(TemplateView):
             # In results mode, search pool = same as displayed games
             # (searching across 5k+ completed games isn't practical)
             all_games = []
-            games     = enrich(games_qs)
+            games = enrich_qs(games_qs)
 
         else:
             # Upcoming scheduled games
@@ -583,25 +572,25 @@ class UpcomingView(TemplateView):
             else:
                 games_qs = base_qs("scheduled").filter(start_date__date=selected_date)
 
-            all_games = enrich(all_qs)
-            games     = enrich(games_qs)
+            all_games = enrich_qs(all_qs)
+            games = enrich_qs(games_qs)
 
-        # ── Accuracy summary for results mode ───────────────────────────
+        # ─────────────────────── Accuracy summary for results mode ───────────────────────────
         if results_mode:
-            correct = sum(1 for g in games if g['prediction_correct'] is True)
-            total   = sum(1 for g in games if g['prediction_correct'] is not None)
+            correct = sum(1 for game in games if game['prediction_correct'] is True)
+            total = sum(1 for game in games if game['prediction_correct'] is not None)
             context['accuracy'] = {
                 'correct': correct,
-                'total':   total,
-                'pct':     round(correct / total * 100, 1) if total > 0 else 0,
+                'total': total,
+                'pct': round(correct / total * 100, 1) if total > 0 else 0,
             }
 
-        context['mode']           = mode
-        context['games']          = games
-        context['all_games']      = all_games
-        context['show_all']       = show_all
+        context['mode']  = mode
+        context['games'] = games
+        context['all_games'] = all_games
+        context['show_all'] = show_all
         context['upcoming_dates'] = upcoming_dates
-        context['selected_date']  = selected_date
-        context['today']          = today
-        context['tomorrow']       = tomorrow
+        context['selected_date'] = selected_date
+        context['today'] = today
+        context['tomorrow'] = tomorrow
         return context
