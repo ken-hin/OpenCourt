@@ -23,11 +23,12 @@
 #     '_current_stats') so stats are loaded in bulk rather than per-team.
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from django.db.models import Prefetch, Q
 from django.views.generic import TemplateView, ListView
 from django.db.models import Case, When, Value, OuterRef, Subquery, FloatField, F, ExpressionWrapper
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats, Ranking
 from opencourt.predictions.predict import make_predictions as predict_game
 
@@ -373,32 +374,36 @@ class TeamDetailView(TemplateView):
 class UpcomingView(TemplateView):
     """
     Upcoming games page with head-to-head stat comparison.
+    Supports two modes controlled by the ?mode= query parameter:
+
+      ?mode=upcoming (default)  — future scheduled games
+      ?mode=results             — completed games with prediction vs actual outcome
 
     Template: opencourt/head_head.html
 
-    URL params:
+    URL params (upcoming mode):
       ?date=YYYY-MM-DD  — filter games to a specific date (defaults to today)
       ?date=all         — show every future scheduled game in chronological order
 
-    Context variables:
-      games           — enriched list of dicts for the selected date (or all
-                        dates if show_all=True). Used by the main #games-list.
-      all_games       — enriched list of ALL future scheduled games in order.
-                        Always passed regardless of selected tab. Used by the
-                        hidden #search-results pool so the search input can
-                        find any team across the full schedule without a reload.
-      show_all        — bool, True when ?date=all was requested. The template
-                        uses this to highlight the "Show All" tab and adjust
-                        the page subtitle.
-      upcoming_dates  — list of date objects for the next 7 days, for the tabs.
-      selected_date   — the date currently being viewed (None when show_all).
-      today           — date.today() so the template can label the first tab.
-      tomorrow        — today + 1 day for the second tab label.
+    URL params (results mode):
+      ?date=YYYY-MM-DD  — filter completed games to a specific date
+      ?date=all         — show all completed games this season (default for results)
 
-    Query optimizations:
-      select_related('home_team', 'away_team') avoids FK hits per game.
-      Two Prefetch calls bulk-load each team's current-season stats so
-      Team.current_season never fires individual queries inside the loop.
+    Context variables:
+      mode            — "upcoming" or "results"
+      games           — enriched list of dicts for the selected date/filter.
+      all_games       — enriched list of ALL games for search (future for upcoming,
+                        completed for results).
+      show_all        — bool, True when ?date=all was requested.
+      upcoming_dates  — list of date objects for the next 7 days (upcoming mode),
+                        or last 7 days (results mode).
+      selected_date   — the date currently being viewed (None when show_all).
+      today           — date.today()
+      tomorrow        — today + 1 day
+
+      Results-mode extras:
+        accuracy        — dict with 'correct', 'total', 'pct' summarising
+                          prediction hit rate across the displayed games.
     """
     template_name = 'opencourt/head_head.html'
 
@@ -408,11 +413,30 @@ class UpcomingView(TemplateView):
         today    = date.today()
         tomorrow = today + timedelta(days=1)
 
-        # 7-day window for the tab bar
-        upcoming_dates = [today + timedelta(days=i) for i in range(7)]
+        # College basketball season spans two calendar years (e.g. 2025-26).
+        # The season field stores the starting year. Games from Nov-Dec use
+        # the same year; games from Jan onward are year-1.
+        # If we're in Jan–Jun, the season started last year; Jul–Dec it's this year.
+        season_year = today.year if today.month >= 7 else today.year - 1
+
+        # Timezone-aware "start of today" for DateTimeField comparisons
+        today_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+
+        # ── Mode: upcoming (default) vs results ─────────────────────────
+        mode = self.request.GET.get('mode', 'upcoming')
+        if mode not in ('upcoming', 'results'):
+            mode = 'upcoming'
+        results_mode = (mode == 'results')
+
+        # Date tabs: next 7 days for upcoming, last 7 days for results
+        if results_mode:
+            upcoming_dates = [today - timedelta(days=i) for i in range(7)]
+        else:
+            upcoming_dates = [today + timedelta(days=i) for i in range(7)]
 
         # Determine whether "Show All" was requested
-        date_param = self.request.GET.get('date', str(today))
+        # Results mode defaults to "all" when no date param is given
+        date_param = self.request.GET.get('date', 'all' if results_mode else str(today))
         show_all   = (date_param == 'all')
 
         if show_all:
@@ -423,34 +447,29 @@ class UpcomingView(TemplateView):
             except ValueError:
                 selected_date = today
 
-        current_year = date.today().year
-
         # ── Shared prefetch setup ────────────────────────────────────────
-        # Both querysets use the same select_related + Prefetch structure.
-        # Defined once here to keep things DRY.
-        def base_qs():
+        def base_qs(status_filter):
             return (
                 Game.objects
-                .filter(status="scheduled")
+                .filter(status=status_filter)
                 .select_related('home_team', 'away_team')
                 .prefetch_related(
                     Prefetch(
                         'home_team__season_stats',
-                        queryset=TeamSeasonStats.objects.filter(season=current_year),
+                        queryset=TeamSeasonStats.objects.filter(season=season_year),
                         to_attr='_current_stats',
                     ),
                     Prefetch(
                         'away_team__season_stats',
-                        queryset=TeamSeasonStats.objects.filter(season=current_year),
+                        queryset=TeamSeasonStats.objects.filter(season=season_year),
                         to_attr='_current_stats',
                     ),
                 )
-                .order_by('start_date')
+                .order_by('-start_date' if results_mode else 'start_date')
             )
 
         # ── Per-game average helpers ─────────────────────────────────────
         def avg(stat_obj, field):
-            """Divide a season total by games played → per-game average."""
             if stat_obj is None:
                 return None
             total       = getattr(stat_obj, field, None)
@@ -460,41 +479,55 @@ class UpcomingView(TemplateView):
             return None
 
         def pct(stat_obj, field):
-            """Round a field already stored as a percentage (e.g. 46.3)."""
             if stat_obj is None:
                 return None
             val = getattr(stat_obj, field, None)
             return round(val, 1) if val is not None else None
 
         # ── Enrich a queryset into the template-friendly list of dicts ───
-        # Runs the prediction model per game inside the loop so each game
-        # dict carries its own prediction result.
         def enrich(qs):
             result = []
             for game in qs:
-                hs  = game.home_team.current_season   # TeamSeasonStats or None
+                hs  = game.home_team.current_season
                 as_ = game.away_team.current_season
 
-                # Run prediction if both teams have season stats.
-                # predict_game expects two TeamSeasonStats objects and
-                # home_advantage: 1 = team_a home, -1 = team_b home, 0 = neutral
+                # Run prediction — wrapped in try/except because build_features()
+                # will crash if any stat field is None (division/subtraction on None).
                 prediction = None
                 if hs and as_:
                     home_adv = 0 if game.neutral_site else 1
-                    pred = predict_game(hs, as_, home_adv)
-                    # pred is a numpy array ([1] = team_a wins, [0] = team_b wins)
-                    # or 1 on error (model file not found)
-                    if pred is not None and pred != 1:
-                        prediction = {
-                            'winner': game.home_team if pred[0] == 1 else game.away_team,
-                            'is_home_win': bool(pred[0] == 1),
-                        }
+                    try:
+                        pred = predict_game(hs, as_, home_adv)
+                        if pred is not None and pred != 1:
+                            prediction = {
+                                'winner': game.home_team if pred[0] == 1 else game.away_team,
+                                'is_home_win': bool(pred[0] == 1),
+                            }
+                    except (TypeError, ZeroDivisionError):
+                        # Some stat fields are None — skip prediction for this game
+                        pass
+
+                # Actual result (only meaningful for completed games)
+                actual = None
+                if game.home_winner is not None:
+                    actual = {
+                        'winner': game.home_team if game.home_winner else game.away_team,
+                        'home_points': game.home_points,
+                        'away_points': game.away_points,
+                    }
+
+                # Compare prediction to actual outcome
+                prediction_correct = None
+                if prediction and actual:
+                    prediction_correct = (prediction['winner'].id == actual['winner'].id)
 
                 result.append({
                     'game':       game,
                     'home_team':  game.home_team,
                     'away_team':  game.away_team,
                     'prediction': prediction,
+                    'actual':     actual,
+                    'prediction_correct': prediction_correct,
                     'home_stats': {
                         'pts':  avg(hs,  'off_points'),
                         'fgp':  pct(hs,  'off_fg_pct'),
@@ -522,23 +555,48 @@ class UpcomingView(TemplateView):
                 })
             return result
 
-        # ── Build the two querysets ──────────────────────────────────────
-        # all_future_qs: every scheduled game from today forward.
-        #   Always computed — feeds both all_games (for search) and
-        #   games when show_all=True.
-        all_future_qs = base_qs().filter(start_date__gte=today)
+        # ── Build querysets based on mode ────────────────────────────────
+        if results_mode:
+            # Finished games with results, newest first.
+            # The API uses status="final" (not "completed") for finished games.
+            finished_qs = base_qs("final").filter(
+                home_winner__isnull=False,
+            )
 
-        if show_all:
-            games_qs = all_future_qs
+            if show_all:
+                # Cap at most recent 50 games so the page loads quickly
+                games_qs = finished_qs[:50]
+            else:
+                games_qs = finished_qs.filter(start_date__date=selected_date)
+
+            # In results mode, search pool = same as displayed games
+            # (searching across 5k+ completed games isn't practical)
+            all_games = []
+            games     = enrich(games_qs)
+
         else:
-            games_qs = base_qs().filter(start_date__date=selected_date)
+            # Upcoming scheduled games
+            all_qs = base_qs("scheduled").filter(start_date__gte=today_start)
 
-        # Enrich both. all_games is always the full future schedule so search
-        # works regardless of which date tab the user has open.
-        # Predictions are embedded per-game inside enrich().
-        all_games = enrich(all_future_qs)
-        games     = enrich(games_qs)
+            if show_all:
+                games_qs = all_qs
+            else:
+                games_qs = base_qs("scheduled").filter(start_date__date=selected_date)
 
+            all_games = enrich(all_qs)
+            games     = enrich(games_qs)
+
+        # ── Accuracy summary for results mode ───────────────────────────
+        if results_mode:
+            correct = sum(1 for g in games if g['prediction_correct'] is True)
+            total   = sum(1 for g in games if g['prediction_correct'] is not None)
+            context['accuracy'] = {
+                'correct': correct,
+                'total':   total,
+                'pct':     round(correct / total * 100, 1) if total > 0 else 0,
+            }
+
+        context['mode']           = mode
         context['games']          = games
         context['all_games']      = all_games
         context['show_all']       = show_all

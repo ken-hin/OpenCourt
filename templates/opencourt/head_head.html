@@ -10,12 +10,43 @@
 
   {# ─── Page Header ─────────────────────────────────────────────────── #}
   <div class="mb-6">
-    <h1 class="text-3xl font-bold">Matchups</h1>
+    <h1 class="text-3xl font-bold">
+      {% if mode == "results" %}Results & Predictions{% else %}Matchups{% endif %}
+    </h1>
     <p class="text-base-content/60 text-sm mt-1">
-      Head-to-head stats ·
-      {% if show_all %}All upcoming games{% else %}{{ selected_date|date:"l, F j Y" }}{% endif %}
+      {% if mode == "results" %}
+        Model performance ·
+        {% if show_all %}All completed games{% else %}{{ selected_date|date:"l, F j Y" }}{% endif %}
+      {% else %}
+        Head-to-head stats ·
+        {% if show_all %}All upcoming games{% else %}{{ selected_date|date:"l, F j Y" }}{% endif %}
+      {% endif %}
     </p>
   </div>
+
+  {# ─── Mode Toggle ─────────────────────────────────────────────────── #}
+  <div class="flex gap-2 mb-4">
+    <a href="?mode=upcoming"
+       class="btn btn-sm {% if mode == 'upcoming' %}btn-primary{% else %}btn-outline{% endif %}">
+      Upcoming
+    </a>
+    <a href="?mode=results&date=all"
+       class="btn btn-sm {% if mode == 'results' %}btn-primary{% else %}btn-outline{% endif %}">
+      Results
+    </a>
+  </div>
+
+  {# ─── Accuracy Banner (results mode only) ─────────────────────────── #}
+  {% if mode == "results" and accuracy %}
+  <div class="alert {% if accuracy.pct >= 60 %}alert-success{% elif accuracy.pct >= 50 %}alert-warning{% else %}alert-error{% endif %} mb-4">
+    <div>
+      <span class="font-bold text-lg">{{ accuracy.correct }}/{{ accuracy.total }}</span>
+      <span class="text-sm ml-1">predictions correct</span>
+      <span class="font-semibold text-lg ml-3">{{ accuracy.pct }}%</span>
+      <span class="text-sm ml-1">accuracy</span>
+    </div>
+  </div>
+  {% endif %}
 
   {# ─── Date Tabs ───────────────────────────────────────────────────── #}
   {# "Show All" loads ?date=all and passes every future scheduled game.  #}
@@ -23,13 +54,13 @@
   <div class="flex gap-2 flex-wrap mb-4">
 
     {# Show All tab — active when show_all is True in context #}
-    <a href="?date=all"
+    <a href="?mode={{ mode }}&date=all"
        class="btn btn-sm {% if show_all %}btn-primary{% else %}btn-outline{% endif %}">
       Show All
     </a>
 
     {% for d in upcoming_dates %}
-      <a href="?date={{ d|date:'Y-m-d' }}"
+      <a href="?mode={{ mode }}&date={{ d|date:'Y-m-d' }}"
          class="btn btn-sm {% if not show_all and d == selected_date %}btn-primary{% else %}btn-outline{% endif %}">
         {% if d == today %}
           Today
@@ -60,7 +91,7 @@
   </div>
 
   {# ─── Date-filtered game list (visible when search is empty) ─────── #}
-  <div class="flex flex-col gap-4" id="games-list">
+  <div class="flex flex-row gap-4" id="games-list">
 
     {% for item in games %}
 
@@ -90,17 +121,34 @@
             </div>
           </div>
 
-          {# VS block with prediction result #}
+          {# VS / Score block with prediction + actual result #}
           <div class="text-center">
-            <div class="font-bold text-xl">VS</div>
-            {% if item.prediction %}
-              <div class="text-xs font-semibold mt-1">
-                {{ item.prediction.winner.display_name }}
-              </div>
-              <div class="text-xs opacity-40 mt-0.5">Predicted Winner</div>
+            {% if item.actual %}
+              {# Completed game — show final score #}
+              <div class="font-bold text-xl">{{ item.actual.home_points }} – {{ item.actual.away_points }}</div>
+              <div class="text-xs opacity-60 mt-0.5">Final</div>
+              {% if item.prediction %}
+                {% if item.prediction_correct %}
+                  <div class="text-xs font-semibold mt-1 text-success">✓ {{ item.prediction.winner.display_name }}</div>
+                  <div class="text-xs opacity-40">Correct</div>
+                {% else %}
+                  <div class="text-xs font-semibold mt-1 text-error">✗ {{ item.prediction.winner.display_name }}</div>
+                  <div class="text-xs opacity-40">Incorrect</div>
+                {% endif %}
+              {% else %}
+                <div class="text-xs opacity-40 mt-1">No prediction</div>
+              {% endif %}
             {% else %}
-              <div class="text-xs opacity-40 mt-1">Prediction unavailable</div>
-              <div class="text-xs opacity-40 mt-0.5">{{ item.prediction.winner }}</div>
+              {# Scheduled game — show prediction only #}
+              <div class="font-bold text-xl">VS</div>
+              {% if item.prediction %}
+                <div class="text-xs font-semibold mt-1">
+                  {{ item.prediction.winner.display_name }}
+                </div>
+                <div class="text-xs opacity-40 mt-0.5">Predicted Winner</div>
+              {% else %}
+                <div class="text-xs opacity-40 mt-1">Prediction unavailable</div>
+              {% endif %}
             {% endif %}
           </div>
 
@@ -274,8 +322,13 @@
 
     {% empty %}
       <div class="py-16 text-center opacity-50" id="no-games-msg">
-        <p class="text-xl font-semibold">No games scheduled for this date.</p>
-        <p class="text-sm mt-2">Try another day using the tabs above, or search for a team.</p>
+        {% if mode == "results" %}
+          <p class="text-xl font-semibold">No completed games for this date.</p>
+          <p class="text-sm mt-2">Try "Show All" or pick another date above.</p>
+        {% else %}
+          <p class="text-xl font-semibold">No games scheduled for this date.</p>
+          <p class="text-sm mt-2">Try another day using the tabs above, or search for a team.</p>
+        {% endif %}
       </div>
     {% endfor %}
 
@@ -317,14 +370,30 @@
           </div>
 
           <div class="text-center">
-            <div class="font-bold text-xl">VS</div>
-            {% if item.prediction %}
-              <div class="text-xs font-semibold mt-1">
-                {{ item.prediction.winner.display_name }}
-              </div>
-              <div class="text-xs opacity-40 mt-0.5">Predicted Winner</div>
+            {% if item.actual %}
+              <div class="font-bold text-xl">{{ item.actual.home_points }} – {{ item.actual.away_points }}</div>
+              <div class="text-xs opacity-60 mt-0.5">Final</div>
+              {% if item.prediction %}
+                {% if item.prediction_correct %}
+                  <div class="text-xs font-semibold mt-1 text-success">✓ {{ item.prediction.winner.display_name }}</div>
+                  <div class="text-xs opacity-40">Correct</div>
+                {% else %}
+                  <div class="text-xs font-semibold mt-1 text-error">✗ {{ item.prediction.winner.display_name }}</div>
+                  <div class="text-xs opacity-40">Incorrect</div>
+                {% endif %}
+              {% else %}
+                <div class="text-xs opacity-40 mt-1">No prediction</div>
+              {% endif %}
             {% else %}
-              <div class="text-xs opacity-40 mt-1">Prediction unavailable</div>
+              <div class="font-bold text-xl">VS</div>
+              {% if item.prediction %}
+                <div class="text-xs font-semibold mt-1">
+                  {{ item.prediction.winner.display_name }}
+                </div>
+                <div class="text-xs opacity-40 mt-0.5">Predicted Winner</div>
+              {% else %}
+                <div class="text-xs opacity-40 mt-1">Prediction unavailable</div>
+              {% endif %}
             {% endif %}
           </div>
 

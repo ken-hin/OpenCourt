@@ -9,7 +9,6 @@
 # home_advantage = -1: Means team_b has advantage
 # home_advantage = 0: Means no team has advantage
 
-
 from .features import build_features
 from ..models import TeamSeasonStats
 import pickle
