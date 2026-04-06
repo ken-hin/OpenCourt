@@ -23,6 +23,9 @@
 #     '_current_stats') so stats are loaded in bulk rather than per-team.
 
 import json
+from datetime import date, timedelta
+from django.db import models
+from django.db.models import Prefetch, Q, Count, Avg, Sum
 from datetime import date, datetime, timedelta
 import numpy as np
 from django.db.models import Prefetch, Q
@@ -33,8 +36,37 @@ from django.utils import timezone
 from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats, Ranking
 from opencourt.predictions.predict import make_predictions as predict_game
 class HomeView(TemplateView):
-    """Landing page. No dynamic data — just renders the static home template."""
+    """Landing page with featured teams, games, and platform stats."""
     template_name = 'opencourt/home.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        
+        # Get top 5 teams by win percentage using prefetch for efficiency
+        # Use Prefetch to load current season stats efficiently
+        prefetch = Prefetch(
+            'season_stats',
+            queryset=TeamSeasonStats.objects.order_by('-season')
+        )
+        context['top_teams'] = Team.objects.prefetch_related(prefetch).order_by('school')
+        # Sort by win percentage in Python (after prefetch)
+        context['top_teams'] = sorted(
+            [t for t in context['top_teams'] if t.current_season and t.current_season.win_pct],
+            key=lambda t: t.current_season.win_pct if t.current_season else 0,
+            reverse=True
+        )[:5]
+        
+        # Get all conferences with team counts
+        context['conferences'] = Conference.objects.all().order_by('name')[:3]
+        
+        # Platform stats
+        context['total_teams'] = Team.objects.count()
+        context['total_conferences'] = Conference.objects.count()
+        context['total_games'] = Game.objects.count()
+        
+        return context
+
+
 class AboutView(TemplateView):
     """Static about/info page. No model data needed."""
     template_name = 'opencourt/about.html'
@@ -72,12 +104,12 @@ class ConferenceListView(ListView):
     Context variable: conference_list (auto-named by ListView from the model)
 
     Queryset optimizations:
-      - prefetch_related('teams') prevents an extra query per conference when
-        the template loops over conference.teams.all.
+      - prefetch_related('teams') with ordering by win_pct descending for conference rankings
       - Prefetch('teams__season_stats', ..., to_attr='_current_stats') loads
         only the current season's stats for every team in a single query.
         This feeds the Team.current_season property so the template can
         access {{ team.current_season.wins }} without any additional DB hits.
+      - Annotations for conference stats: team_count, avg_win_pct, total_wins, total_losses
 
     The template filters out conferences with 0 teams (non-D1 or empty
     conferences that came from the API) using {% if conference.teams.count > 0 %}.
@@ -88,12 +120,25 @@ class ConferenceListView(ListView):
     def get_queryset(self):
       current_year = date.today().year
       return Conference.objects.prefetch_related(
-        'teams',
+        Prefetch(
+          'teams',
+          queryset=Team.objects.annotate(
+            current_win_pct=Subquery(
+              TeamSeasonStats.objects.filter(team=OuterRef('pk'), season=current_year).values('win_pct')[:1],
+              output_field=FloatField()
+            )
+          ).order_by('-current_win_pct'),
+        ),
         Prefetch(
           'teams__season_stats',
           queryset=TeamSeasonStats.objects.filter(season=current_year),
           to_attr='_current_stats'
         )
+      ).annotate(
+        team_count=Count('teams', distinct=True),
+        avg_win_pct=Avg('teams__season_stats__win_pct', filter=Q(teams__season_stats__season=current_year), distinct=True),
+        total_wins=Sum('teams__season_stats__wins', filter=Q(teams__season_stats__season=current_year), distinct=True),
+        total_losses=Sum('teams__season_stats__losses', filter=Q(teams__season_stats__season=current_year), distinct=True),
       ).all()
 class RankingsListView(TemplateView):
     """

@@ -19,6 +19,24 @@
 /* === Brand / Global === */
 /* Add site-wide custom styles here */
 
+/* Team card contrast fix */
+.team-card {
+  color: white !important;
+}
+
+/* If background is too light (brightness > 0.65), use dark text */
+.team-card[data-brightness="light"] {
+  color: #1f2937 !important; /* Dark gray text for light backgrounds */
+}
+
+/* Also ensure card titles and content have proper contrast */
+.team-card[data-brightness="light"] .card-title,
+.team-card[data-brightness="light"] .card-body {
+  color: #1f2937 !important;
+}
+
+/* === Animations  === */
+
 /* === Animations  === */
 /* Always-on transition so both show and hide animate smoothly. */
 .team-card {
