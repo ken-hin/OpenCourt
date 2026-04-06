@@ -20,18 +20,18 @@
 /* Add site-wide custom styles here */
 
 /* Team card contrast fix */
-.team-card-inner {
+.team-card {
   color: white !important;
 }
 
 /* If background is too light (brightness > 0.65), use dark text */
-.team-card-inner[data-brightness="light"] {
+.team-card[data-brightness="light"] {
   color: #1f2937 !important; /* Dark gray text for light backgrounds */
 }
 
 /* Also ensure card titles and content have proper contrast */
-.team-card-inner[data-brightness="light"] .card-title,
-.team-card-inner[data-brightness="light"] .card-body {
+.team-card[data-brightness="light"] .card-title,
+.team-card[data-brightness="light"] .card-body {
   color: #1f2937 !important;
 }
 
