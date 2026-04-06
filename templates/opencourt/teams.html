@@ -7,7 +7,7 @@
   <!-- Search/Filtering -->
   <div class="container mx-auto py-15">
     <div class="flex flex-col gap-4 my-7 mx-15 content-stretch">
-      <!-- Search bar: Need to implement actual search functionality -->
+      <!-- Search bar -->
       <div class="join flex items-center">
         <label class="input join-item grow-4">
           <input type="search" placeholder="Search" />
@@ -17,31 +17,7 @@
         </button>
       </div>
       <!-- Conference Filter -->
-      <div>
-        <div class="dropdown">
-          <div tabindex="0" role="button" class="btn btn-neutral m-1">
-            <i class="fa-solid fa-filter"></i>
-            <span class="text-lg">Filter by Conference</span>
-            <i class="fa-solid fa-chevron-down text-xs"></i>
-          </div>
-          <div tabindex="0" class="dropdown-content z-20 mt-2 p-4 shadow-lg bg-base-200 rounded-xl w-180">
-            <form class="conf-filter">
-              <div class="grid grid-cols-6 gap-2">
-                {% for conference in conference_list %}
-                <label class="cursor-pointer">
-                  <input type="checkbox" name="conference" class="filter-btn sr-only peer" data-target="{{ conference.slug }}-section"/>
-                  <span class="btn btn-sm btn-ghost w-full peer-checked:btn-primary">{{ conference.abbrv }}</span>
-                </label>
-                {% endfor %}
-              </div>
-              <div class="divider my-2"></div>
-              <div class="flex justify-end">
-                <input class="btn btn-sm btn-outline" type="reset" value="Clear All"/>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
+      {% include 'opencourt/components/conference_filter.html' %}
     </div>
     <!-- Team Cards -->
     <div class="flex flex-wrap gap-4 justify-center">
@@ -53,6 +29,7 @@
     </div>
   </div>
 
+  <script src="{% static 'js/card_contrast.js' %}"></script>
   <script src="{% static 'js/conference_filter.js' %}"></script>
   <style src="{% static 'css/main.css' %}"></style>
 
