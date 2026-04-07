@@ -1,10 +1,10 @@
 # Code Quality Grade — OpenCourt
 
-**Evaluation Date:** 2026-03-29  
+**Evaluation Date:** 2026-04-07  
 **Framework:** Functional Correctness & Robustness · Code Quality & Maintainability · Collaboration & Version Control
 
-**Type:** Django web app (college basketball statistics)  
-**Language:** Python · **LOC:** ~750 · **Source files:** 30
+**Type:** Django web app (college basketball statistics + ML game prediction)  
+**Language:** Python · **LOC:** ~3,800 · **Source files:** 35+
 
 ---
 
@@ -22,26 +22,26 @@
 
 ## 1. Functional Correctness & Robustness — ★★★★☆
 
-- **Automated Testing:** `tests.py` covers `win_percentage()` with four cases: normal, undefeated, winless, and the zero-game edge case (0–0 → 0.0%). This is the only project in the class with intentional tests tied to an explicit edge case. No view, model, or service tests exist yet.
-- **Edge Case Handling:** The zero-division bug in `win_percentage` (originally unhandled) was addressed in Sprint 4. The API sync functions handle missing team-name matches with a silent `ignored_count` counter — a warning log for unexpectedly high ignored counts is still missing.
-- **Security & Reliability:** API keys are loaded from environment variables. Exponential backoff with `Retry-After` support handles rate limiting correctly. No hardcoded secrets found. The `3pt_pct` dict key (digit-prefixed) is invalid in Django templates and will cause a `TemplateSyntaxError` at runtime.
+- **Automated Testing:** `tests.py` covers `win_percentage()` with four cases (normal, undefeated, winless, 0–0 edge case). Test count has not grown since Sprint 3 — the new `predictions/` ML module (`model.py`, `train_model.py`, `evaluate.py`, `predict.py`) has zero tests. No view or service tests exist.
+- **Edge Case Handling:** The `3pt_pct` template bug from Sprint 3 is **fixed** — the context key was renamed to `three_pt_pct`, a valid Python identifier used safely in templates with `|safe`. The zero-division guard in `win_percentage` remains correct. API sync `ignored_count` counter still has no warning log when unexpectedly high.
+- **Security & Reliability:** API keys loaded from environment variables. Exponential backoff with `Retry-After` support handles rate limiting correctly. No hardcoded secrets. A revert pattern (`Revert "Update settings.py"` / `Revert "Extract card contrast logic"`) visible in Sprint 4 suggests some merge instability in the final sprint, but the final state is clean.
 
 ---
 
 ## 2. Code Quality & Maintainability — ★★★★★
 
-- **Readability & Style:** PEP 8 compliant throughout, with one minor exception: `class Meta :` has a space before the colon in `models.py`. Naming is consistent (snake_case throughout).
-- **Documentation:** Best-documented codebase in the class. Every function and class has a comprehensive docstring explaining purpose, parameters, return values, error conditions, and links to related code.
-- **Modularization:** Textbook Django separation — `models.py` (data), `views.py` (HTTP), `services.py` (API calls), `stats.py` (pure functions), `management/commands/` (CLI). Each layer is independently testable.
-- **Complexity:** Logic is straightforward. The only unnecessary complexity is the redundant `get_queryset` override in `TeamListView` (returns `Team.objects.all()`, which is the default behavior).
+- **Readability & Style:** PEP 8 compliant throughout. Consistent snake_case naming. No regressions in style.
+- **Documentation:** Best-documented codebase in the class. Every function and class has comprehensive docstrings explaining purpose, parameters, return values, and error conditions. The predictions module maintains this standard.
+- **Modularization:** Textbook Django separation — `models.py`, `views.py`, `services/`, `stats.py`, `management/commands/`, and now `predictions/`. Each layer is independently testable.
+- **Complexity:** Logic remains straightforward. The predictions module cleanly separates training (`train_model.py`) from inference (`predict.py`) and evaluation (`evaluate.py`).
 
 ---
 
 ## 3. Collaboration & Version Control — ★★★★☆
 
-- **Commit History:** 106 total commits. Kenneth Hinman (70), Jackson Murphy (25), Alex Worthington (4), Samuel Bom (2). Commit messages are descriptive and specific. The work distribution is uneven — Kenneth carries a disproportionate share of implementation.
-- **Branching Strategy:** 11 remote feature branches (`feature/rankings-page`, `feature/head-to-head-matchups`, `feature/conference-view`, etc.) with 24 PR merges. This is the strongest branching discipline in the class.
-- **Integration:** No evidence of unresolved merge conflicts. Sprint 4 includes a dedicated issue (#40) for code revisions based on the code quality report, showing responsiveness to feedback.
+- **Commit History:** 143 total commits. Kenneth Hinman (94), Jackson Murphy (28), Alex Worthington (8), Sbombr (7). Kenneth's share decreased slightly (from ~66% to 66%) but the distribution remains uneven. Commit messages are descriptive and issue-linked.
+- **Branching Strategy:** 13+ remote branches with 27+ documented PR merges, including `fix/team-card-filtering` (#54), `final-prod-ui` (#52), `feature/integrate-model` (#51), `feature/update-data-functions` (#50). Strongest branching discipline in the class.
+- **Integration:** Multiple production-ready merges with issue-linked PR numbers. Double-revert pattern in the final sprint (`Revert "Update settings.py"` then re-apply) indicates some merge instability in the production UI branch, but the final state is clean.
 
 ---
 
@@ -56,12 +56,22 @@
 
 ### Top Strengths
 1. Best-documented codebase in the class — comprehensive docstrings on every function and class
-2. Strongest branching strategy — 11 feature branches, 24 PR merges, code reviews before integration
-3. Clean Django architecture — textbook service/model/view separation, each layer independently testable
-4. Robust API error handling — exponential backoff, rate-limit awareness, three distinct failure modes handled
+2. Strongest branching strategy — 13 feature branches, 27+ PR merges, issue-linked commits
+3. Clean Django architecture — service/model/view/stats separation, each layer independently testable
+4. Sprint 4 added a full ML predictions module — technically the most ambitious addition in the class
 
 ### Recommendations for Improvement
-1. **Expand test coverage** — add tests for views (`TeamDetailView` context data) and services (with mocked API responses)
-2. **Rename `3pt_pct` context key** to `three_pt_pct` — a digit-prefixed key is a `TemplateSyntaxError` in Django templates
-3. **Add warning log** when `ignored_count` is unexpectedly high during stats sync (silent drops are hard to detect)
-4. **Balance team contribution** — the other three members should take ownership of more implementation tasks
+1. **Expand test coverage** — add tests for the new `predictions/` module and at least one view test
+2. **Add warning log** when `ignored_count` exceeds a threshold during API sync — silent drops are hard to detect
+3. **Balance team contribution** — Kenneth's 66% share should decrease; other members should own more Sprint deliverables
+4. **Review before reverting** — the double-revert pattern in Sprint 4 suggests insufficient pre-merge review
+
+---
+
+## Changes from Previous Evaluation (2026-03-29)
+
+- Commit count grew from 106 → 143; 4 new PRs merged in Sprint 4
+- The previously reported `3pt_pct` template `TemplateSyntaxError` bug **is fixed** (renamed to `three_pt_pct`)
+- New `predictions/` ML module added (game outcome prediction) — technically impressive but untested
+- Two reverts appeared in the `final-prod-ui` branch suggesting merge instability, now resolved
+- Grade unchanged at **A−**; the project remains the strongest in the class
