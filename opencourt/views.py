@@ -448,7 +448,7 @@ class UpcomingView(TemplateView):
 
         # Season field stores the starting year.
         # Games from Nov-Dec use same year, and games from Jan onward are year-1.
-        season_year = today.year if today.month >= 7 else today.year - 1
+        season_year = today.year + 1 if today.month >= 7 else today.year
 
         # Timezone-aware "start of today" for DateTimeField comparisons
         today_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
