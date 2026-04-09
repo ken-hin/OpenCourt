@@ -91,7 +91,7 @@
   </div>
 
   {# ─── Date-filtered game list (visible when search is empty) ─────── #}
-  <div class="flex flex-row gap-4" id="games-list">
+  <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 1rem;" id="games-list">
 
     {% for item in games %}
 
@@ -339,7 +339,7 @@
   {# This list is hidden by default and only shown when a search query   #}
   {# is active. It's always rendered in full so JS can filter it         #}
   {# client-side without a server round-trip.                            #}
-  <div class="flex flex-col gap-4 hidden" id="search-results">
+  <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 1rem; " class="hidden" id="search-results">
 
     {# Shown when search is active but no cards match the query #}
     <div class="py-16 text-center opacity-50 hidden" id="no-search-msg">
@@ -469,11 +469,13 @@
   const noSearchMsg  = document.getElementById('no-search-msg');
   const searchCards  = document.querySelectorAll('.search-card');
 
+  // Grab the current mode from the page (results vs upcoming)
+  const currentMode  = "{{ mode }}";
+
   function handleSearch(raw) {
     const q = raw.trim().toLowerCase();
 
     if (!q) {
-      // Empty query — restore the date-tab view
       gamesList.classList.remove('hidden');
       searchPanel.classList.add('hidden');
       noSearchMsg.classList.add('hidden');
@@ -481,20 +483,38 @@
       return;
     }
 
-    // Non-empty query — switch to the all-games search panel
-    gamesList.classList.add('hidden');
-    searchPanel.classList.remove('hidden');
+    if (currentMode === 'results') {
+      // Search within #games-list (past games already rendered by date tab)
+      searchPanel.classList.add('hidden');
+      gamesList.classList.remove('hidden');
 
-    let matchCount = 0;
-    searchCards.forEach(card => {
-      const teams = card.dataset.teams.toLowerCase();
-      const matches = teams.includes(q);
-      card.style.display = matches ? '' : 'none';
-      if (matches) matchCount++;
-    });
+      const dateCards = gamesList.querySelectorAll('[data-teams]');
+      let matchCount = 0;
+      dateCards.forEach(card => {
+        const teams = card.dataset.teams.toLowerCase();
+        const matches = teams.includes(q);
+        card.style.display = matches ? '' : 'none';
+        if (matches) matchCount++;
+      });
 
-    // Show "no results" message only when nothing matched
-    noSearchMsg.classList.toggle('hidden', matchCount > 0);
+      noSearchMsg.classList.toggle('hidden', matchCount > 0);
+      noSearchMsg.style.display = matchCount === 0 ? 'block' : 'none';
+
+    } else {
+      // Search within #search-results (all future games pool)
+      gamesList.classList.add('hidden');
+      searchPanel.classList.remove('hidden');
+
+      let matchCount = 0;
+      searchCards.forEach(card => {
+        const teams = card.dataset.teams.toLowerCase();
+        const matches = teams.includes(q);
+        card.style.display = matches ? '' : 'none';
+        if (matches) matchCount++;
+      });
+
+      noSearchMsg.classList.toggle('hidden', matchCount > 0);
+    }
   }
 </script>
 
