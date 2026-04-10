@@ -30,8 +30,15 @@ dependencies = [
     "requests>=2.32.5",
     # URL-friendly slug generation (e.g. "Duke Blue Devils" -> "duke-blue-devils")
     "python-slugify>=8.0.4",
-    # Add new packages below as the project grows, e.g.:
-    # "whitenoise>=6.9",  # for serving static files in production (Week 7)
+    # --- Production / Deployment ---
+    # Serves static files (CSS, JS, images) without needing nginx or a CDN
+    "whitenoise>=6.9",
+    # Parses DATABASE_URL env var into Django's DATABASES dict
+    "dj-database-url>=2.3.0",
+    # PostgreSQL adapter — required for connecting to Supabase
+    "psycopg[binary]>=3.2",
+    # Production WSGI HTTP server (replaces Django's runserver)
+    "gunicorn>=23.0",
     "python-dotenv>=1.2.1",
     "tqdm>=4.67.3",
     "numpy>=2.4.3",
