@@ -3,17 +3,15 @@
 # This file controls everything: installed apps, database, templates, static
 # files, middleware, and more. All teammates should be familiar with this file.
 #
-# IMPORTANT: Never commit SECRET_KEY or sensitive credentials to version control.
-# Before deploying to production, move secrets to environment variables and
-# set DEBUG = False. See: https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+# HOW DEV vs PRODUCTION WORKS:
+# - Locally: .env file sets DEBUG=True, no DATABASE_URL → uses SQLite
+# - On Railway: env vars set DEBUG=False, DATABASE_URL → uses Supabase PostgreSQL
+# - The same settings.py works in both environments, no code changes needed.
 
 import os
 from pathlib import Path
 
-# Load environment variables from .env file (if it exists).
-# This lets us read SECRET_KEY, DEBUG, NPM_BIN_PATH, etc. from .env
-# without hardcoding them here. Requires: uv add python-dotenv
-# Copy .env.example to .env and fill in your values — see README for setup.
+import dj_database_url
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -23,14 +21,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # --- Security ---
-# WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-5c#88oge0lq-ezo1n3@-33ia-vv+a(a$q6&za53ht!=blqlh^g'
+# In production, SECRET_KEY is set as an environment variable on Railway.
+# Locally, it falls back to the insecure dev key (fine for local dev only).
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-5c#88oge0lq-ezo1n3@-33ia-vv+a(a$q6&za53ht!=blqlh^g',
+)
 
-# WARNING: don't run with debug=True in production!
-DEBUG = True
+# DEBUG is False unless explicitly set to "True" in the environment.
+# On Railway this will be unset or "False" → production mode.
+# In your local .env it's "True" → dev mode with debug toolbar, etc.
+DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
-# Add your production domain here before deploying (e.g. ['opencourt.com'])
-ALLOWED_HOSTS = []
+# ALLOWED_HOSTS controls which domain names Django will serve.
+# Railway gives you a *.up.railway.app subdomain automatically.
+# Locally, your .env sets this to "localhost,127.0.0.1".
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # --- Apps ---
@@ -75,6 +81,11 @@ INTERNAL_IPS = ['127.0.0.1']
 # unless you know what you're doing.
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise serves static files (CSS, JS, images) directly from Django
+    # in production, so you don't need nginx or a separate CDN. It sits right
+    # after SecurityMiddleware so it can intercept static file requests early.
+    # In dev (DEBUG=True), Django's staticfiles app handles this instead.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -112,14 +123,16 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 
 # --- Database ---
-# Using SQLite for development. Switch to PostgreSQL before deploying to
-# production (see Schedule.md Week 7 — Deployment).
+# If DATABASE_URL is set (production), use Supabase PostgreSQL.
+# If not set (local dev), fall back to SQLite — no setup needed.
+# dj-database-url parses the URL string into Django's DATABASES format.
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        conn_max_age=600,       # keep DB connections open for 10 min (reduces latency)
+        conn_health_checks=True, # verify connections are alive before reusing
+    )
 }
 
 
@@ -163,6 +176,19 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+
+# STATIC_ROOT is where `collectstatic` gathers all static files into one folder.
+# WhiteNoise then serves files from here in production.
+# This folder is in .gitignore — it's generated at deploy time, not committed.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise storage backend — compresses and fingerprints static files for
+# better caching and performance. Only takes effect when collectstatic runs.
+STORAGES = {
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
