@@ -17,3 +17,13 @@
 - This is still one of the most maintainable repos in the class because the code is heavily documented and follows recognizable Django patterns.
 - The main maintainability penalty is size: `views.py`, `models.py`, and `services/sync.py` are now large enough that they should be split by feature/domain.
 - The strongest parts of the repo are the service modules and the predictions package, which keep purpose and naming clear.
+
+---
+
+## Manual Review (TA)
+
+**Final Grade (Manual): 93 / 100 (A)**
+
+**Students:** aworthi4, jmurph91, khinman, sbombry1
+
+Best documentation in the class — models, views, and service modules all have strong file headers and function/class docstrings. Django architecture is solid with proper layering (models, views, services, predictions, management/commands). The service modules and predictions package demonstrate good architectural thinking and separation of concerns. The main issue is that `views.py` and `models.py` have grown large and could benefit from being split by feature/domain, but this is a natural consequence of an active, feature-rich project.

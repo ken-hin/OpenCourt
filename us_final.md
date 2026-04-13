@@ -30,3 +30,13 @@
 ### Changes from Previous Evaluation
 - No substantive repo changes were detected in the user story files.
 - The final score is lower than the earlier 10/10-style evaluation because `rubric_userstory.md` now applies point deductions for malformed issue-title links and non-Given/When/Then acceptance criteria.
+
+---
+
+## Manual Review (TA)
+
+**Final Grade (Manual): 90 / 100 (A-)**
+
+**Students:** aworthi4, jmurph91, khinman, sbombry1
+
+Some of the strongest user story content in the class. Both stories have specific stakeholders, concrete tasks, and genuine benefits. Acceptance criteria are detailed, specific, and testable — Story 1 even includes a failure path (API unreachable) and a security requirement (no hardcoded keys), which most teams omit entirely. Story 2 handles the empty-state edge case. The automated grader penalized heavily for the space in `[Title] (URL)` and for using bullet lists instead of Given/When/Then, but the actual criteria quality exceeds most teams that use G/W/T format.
