@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'tailwind',        # django-tailwind: bridges Django and the Tailwind CLI
     'theme',           # our Tailwind theme app (CSS source + compiled output)
     'django_browser_reload',  # auto-refreshes the browser when CSS or templates change
+    "django.contrib.humanize",
     # Local apps
     'opencourt',
 ]

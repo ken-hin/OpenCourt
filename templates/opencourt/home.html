@@ -1,27 +1,336 @@
-{# home.html — Home page for OpenCourt.                                              #}
-{# Extends base.html. Currently displays the site name centered on screen with a    #}
-{# fade-in animation. Replace the content block here as the UI is built out.        #}
-{# To add page-specific styles, use {% block extra_css %}; for scripts, extra_js.   #}
-
 {% extends 'base.html' %}
+{% load humanize %}
 
-{% block title %}OpenCourt{% endblock %}
-
-{% block extra_css %}
-<style>
-    @keyframes fade-in {
-        from { opacity: 0; }
-        to   { opacity: 1; }
-    }
-
-    .fade-in {
-        animation: fade-in 1.75s ease forwards;
-    }
-</style>
-{% endblock %}
+{% block title %}OpenCourt — Free College Basketball Analytics{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-center min-h-screen">
-    <h1 class="text-7xl font-bold fade-in">OpenCourt</h1>
+
+{# ═══════════════════════ HERO SECTION ═══════════════════════ #}
+<div class="hero bg-base-200 rounded-box mb-10 py-16 px-6">
+  <div class="hero-content text-center">
+    <div class="max-w-3xl">
+      <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight">
+        🏀 OpenCourt
+      </h1>
+      <p class="py-5 text-lg md:text-xl opacity-80 max-w-xl mx-auto">
+        Advanced college basketball analytics — efficiency ratings, Four Factors,
+        head-to-head predictions — all free, no paywall.
+      </p>
+      <div class="flex gap-3 justify-center flex-wrap">
+        <a href="{% url 'opencourt:teams' %}" class="btn btn-primary btn-lg">
+          Browse Teams
+        </a>
+        <a href="{% url 'opencourt:upcoming' %}" class="btn btn-secondary btn-lg">
+          Predictions
+        </a>
+        <a href="{% url 'opencourt:rankings' %}" class="btn btn-accent btn-lg">
+          Rankings
+        </a>
+      </div>
+    </div>
+  </div>
 </div>
+
+{# ═══════════════════════ PLATFORM STATS BAR ═══════════════════════ #}
+<div class="stats stats-vertical md:stats-horizontal shadow w-full mb-10 bg-base-200">
+  <div class="stat">
+    <div class="stat-figure text-primary">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+      </svg>
+    </div>
+    <div class="stat-title">Teams Tracked</div>
+    <div class="stat-value text-primary">{{ total_teams|intcomma }}</div>
+    <div class="stat-desc">Division I programs</div>
+  </div>
+  <div class="stat">
+    <div class="stat-figure text-secondary">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+      </svg>
+    </div>
+    <div class="stat-title">Conferences</div>
+    <div class="stat-value text-secondary">{{ total_conferences }}</div>
+    <div class="stat-desc">D1 conferences</div>
+  </div>
+  <div class="stat">
+    <div class="stat-figure text-accent">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+    </div>
+    <div class="stat-title">Games Tracked</div>
+    <div class="stat-value text-accent">{{ total_games|intcomma }}</div>
+    <div class="stat-desc">This season</div>
+  </div>
+</div>
+
+{# ═══════════════════════ TOP TEAMS ═══════════════════════ #}
+<section class="mb-10">
+  <div class="flex items-center justify-between mb-5">
+    <h2 class="text-2xl md:text-3xl font-bold">🔥 Top Teams by Win %</h2>
+    <a href="{% url 'opencourt:teams' %}" class="btn btn-ghost btn-sm">
+      View All →
+    </a>
+  </div>
+
+  <div class="overflow-x-auto rounded-box">
+    <table class="table table-zebra">
+      <thead>
+        <tr>
+          <th class="w-12">#</th>
+          <th>Team</th>
+          <th>Conference</th>
+          <th class="text-center">Record</th>
+          <th class="text-center">Win %</th>
+          <th class="text-center">Off Rtg</th>
+          <th class="text-center">Def Rtg</th>
+          <th class="text-center">Net</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for team in top_teams %}
+        <tr class="hover">
+          <td class="font-mono text-sm opacity-60">{{ forloop.counter }}</td>
+          <td>
+            <div class="flex items-center gap-3">
+              {% if team.primary_color %}
+              <div class="w-3 h-3 rounded-full flex-shrink-0"
+                   style="background-color: {{ team.primary_color }};"></div>
+              {% endif %}
+              <a href="{% url 'opencourt:team-detail' team.slug %}"
+                 class="link link-primary font-semibold">
+                {{ team.school }}
+              </a>
+              {% if team.mascot %}
+              <span class="text-xs opacity-50 hidden md:inline">{{ team.mascot }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            {% if team.conference %}
+            <span class="badge badge-sm badge-neutral">{{ team.conference.abbrv }}</span>
+            {% else %}
+            <span class="text-xs opacity-40">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center font-mono">
+            {% if team.current_season %}
+              {{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if team.current_season and team.current_season.win_pct is not None %}
+              <span class="font-mono font-bold
+                {% if team.current_season.win_pct >= 75 %}text-success
+                {% elif team.current_season.win_pct >= 50 %}text-warning
+                {% else %}text-error{% endif %}">
+                {{ team.current_season.win_pct|floatformat:1 }}%
+              </span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="text-center font-mono">
+            {% if team.current_season and team.current_season.off_rating %}
+              <span class="{% if team.current_season.off_rating >= 110 %}text-success{% endif %}">
+                {{ team.current_season.off_rating|floatformat:1 }}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center font-mono">
+            {% if team.current_season and team.current_season.opp_rating %}
+              <span class="{% if team.current_season.opp_rating <= 95 %}text-success{% endif %}">
+                {{ team.current_season.opp_rating|floatformat:1 }}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center font-mono font-bold">
+            {% if team.current_season and team.current_season.off_rating and team.current_season.opp_rating %}
+              {% widthratio team.current_season.off_rating 1 1 as off_int %}
+              {% widthratio team.current_season.opp_rating 1 1 as def_int %}
+              {% with net=team.current_season.off_rating|floatformat:1 %}
+                {# Compute net in the template — not ideal but works without a custom tag #}
+              {% endwith %}
+              <span class="{% if team.current_season.off_rating > team.current_season.opp_rating %}text-success{% else %}text-error{% endif %}">
+                {% if team.current_season.off_rating > team.current_season.opp_rating %}+{% endif %}{{ team.current_season.point_margin|floatformat:1|default:"—" }}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="8" class="text-center opacity-50 py-12">
+            No team data available yet. Run <code>python manage.py sync_teams</code> to get started.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ═══════════════════════ FEATURED CONFERENCES ═══════════════════════ #}
+<section class="mb-10">
+  <div class="flex items-center justify-between mb-5">
+    <h2 class="text-2xl md:text-3xl font-bold">🏟️ Conferences</h2>
+    <a href="{% url 'opencourt:conferences' %}" class="btn btn-ghost btn-sm">
+      All Conferences →
+    </a>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    {% for conf in conferences %}
+    <div class="card bg-base-200 shadow-md hover:shadow-lg transition-shadow">
+      <div class="card-body">
+        <h3 class="card-title text-lg">
+          {{ conf.short_name }}
+          <span class="badge badge-primary badge-sm">{{ conf.abbrv }}</span>
+        </h3>
+        <p class="text-sm opacity-60">{{ conf.name }}</p>
+        <div class="flex gap-4 mt-2 text-sm">
+          <span>
+            <span class="font-semibold">{{ conf.teams.count }}</span>
+            <span class="opacity-60">teams</span>
+          </span>
+        </div>
+        <div class="card-actions justify-end mt-3">
+          <a href="{% url 'opencourt:conferences' %}"
+             class="btn btn-ghost btn-sm">
+            View Conference →
+          </a>
+        </div>
+      </div>
+    </div>
+    {% empty %}
+    <div class="col-span-3 text-center opacity-50 py-8">
+      No conference data available yet.
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+{# ═══════════════════════ QUICK LINKS / FEATURES ═══════════════════════ #}
+<section class="mb-10">
+  <h2 class="text-2xl md:text-3xl font-bold mb-5">⚡ Explore</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+    <a href="{% url 'opencourt:teams' %}" class="card bg-base-200 shadow hover:shadow-lg transition-all hover:-translate-y-1">
+      <div class="card-body items-center text-center">
+        <div class="text-4xl mb-2">📊</div>
+        <h3 class="card-title text-base">Team Stats</h3>
+        <p class="text-sm opacity-60">Efficiency ratings, Four Factors, shooting splits, and historical trends for every D1 team.</p>
+      </div>
+    </a>
+
+    <a href="{% url 'opencourt:upcoming' %}" class="card bg-base-200 shadow hover:shadow-lg transition-all hover:-translate-y-1">
+      <div class="card-body items-center text-center">
+        <div class="text-4xl mb-2">🔮</div>
+        <h3 class="card-title text-base">Predictions</h3>
+        <p class="text-sm opacity-60">Head-to-head matchup analysis with ML-powered win predictions for upcoming games.</p>
+      </div>
+    </a>
+
+    <a href="{% url 'opencourt:rankings' %}" class="card bg-base-200 shadow hover:shadow-lg transition-all hover:-translate-y-1">
+      <div class="card-body items-center text-center">
+        <div class="text-4xl mb-2">🏆</div>
+        <h3 class="card-title text-base">Rankings</h3>
+        <p class="text-sm opacity-60">AP Top 25 and Coaches Poll side by side, with week-by-week navigation.</p>
+      </div>
+    </a>
+
+    <a href="{% url 'opencourt:conferences' %}" class="card bg-base-200 shadow hover:shadow-lg transition-all hover:-translate-y-1">
+      <div class="card-body items-center text-center">
+        <div class="text-4xl mb-2">🏟️</div>
+        <h3 class="card-title text-base">Conferences</h3>
+        <p class="text-sm opacity-60">Browse all 34 D1 conferences with team rosters, standings, and aggregate stats.</p>
+      </div>
+    </a>
+
+  </div>
+</section>
+
+{# ═══════════════════════ UPCOMING + RESULTS PREVIEW ═══════════════════════ #}
+<section class="mb-10">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    {# --- Upcoming Games Card --- #}
+    <div class="card bg-base-200 shadow">
+      <div class="card-body">
+        <h3 class="card-title">
+          📅 Upcoming Games
+        </h3>
+        <p class="text-sm opacity-60 mb-3">Today's scheduled matchups with head-to-head predictions.</p>
+        <div class="text-center py-6">
+          <a href="{% url 'opencourt:upcoming' %}" class="btn btn-primary">
+            View Today's Games →
+          </a>
+        </div>
+      </div>
+    </div>
+
+    {# --- Recent Results Card --- #}
+    <div class="card bg-base-200 shadow">
+      <div class="card-body">
+        <h3 class="card-title">
+          🏆 Recent Results
+        </h3>
+        <p class="text-sm opacity-60 mb-3">Completed games with prediction accuracy tracking.</p>
+        <div class="text-center py-6">
+          <a href="{% url 'opencourt:upcoming' %}?mode=results" class="btn btn-secondary">
+            View Results →
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+{# ═══════════════════════ ABOUT / METHODOLOGY ═══════════════════════ #}
+<section class="mb-6">
+  <div class="card bg-base-200 shadow">
+    <div class="card-body">
+      <h3 class="card-title text-xl">📐 Our Methodology</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+        <div>
+          <h4 class="font-semibold mb-2">The Four Factors</h4>
+          <p class="text-sm opacity-70 leading-relaxed">
+            We use Dean Oliver's Four Factors framework — the most predictive
+            indicators of team success in basketball:
+          </p>
+          <ul class="text-sm opacity-70 mt-2 space-y-1 list-disc list-inside">
+            <li><strong>Shooting (40%)</strong> — Effective FG%</li>
+            <li><strong>Turnovers (25%)</strong> — Turnover ratio per 100 possessions</li>
+            <li><strong>Rebounding (20%)</strong> — Offensive rebound %</li>
+            <li><strong>Free Throws (15%)</strong> — Free throw rate (FTA/FGA)</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-semibold mb-2">Efficiency Ratings</h4>
+          <p class="text-sm opacity-70 leading-relaxed">
+            Offensive and defensive ratings measure points scored/allowed per
+            100 possessions. Unlike raw points, these are tempo-independent —
+            making them ideal for cross-team comparison.
+          </p>
+          <p class="text-sm opacity-70 mt-2">
+            A strong offense rates <strong>110+</strong>.
+            A strong defense rates <strong>95 or below</strong>.
+          </p>
+          <div class="mt-3">
+            <a href="{% url 'opencourt:about' %}" class="btn btn-ghost btn-sm">
+              Learn More →
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 {% endblock %}

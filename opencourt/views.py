@@ -35,66 +35,79 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats, Ranking
 from opencourt.predictions.predict import make_predictions as predict_game
+
 class HomeView(TemplateView):
-    """Landing page with featured teams, games, and platform stats."""
     template_name = 'opencourt/home.html'
-    
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        
-        # Get top 5 teams by win percentage using prefetch for efficiency
-        # Use Prefetch to load current season stats efficiently
-        prefetch = Prefetch(
-            'season_stats',
-            queryset=TeamSeasonStats.objects.order_by('-season')
+        current_year = date.today().year
+
+        # Get top 5 teams entirely in the database — no Python sorting
+        top_team_ids = (
+            TeamSeasonStats.objects.filter(season=current_year, win_pct__isnull=False).order_by('-win_pct').values_list('team_id', flat=True)[:5]
         )
-        context['top_teams'] = Team.objects.prefetch_related(prefetch).order_by('school')
-        # Sort by win percentage in Python (after prefetch)
-        context['top_teams'] = sorted(
-            [t for t in context['top_teams'] if t.current_season and t.current_season.win_pct],
-            key=lambda t: t.current_season.win_pct if t.current_season else 0,
-            reverse=True
-        )[:5]
-        
-        # Get all conferences with team counts
+
+        # Preserve the ordering from the subquery
+        preserved_order = Case(
+            *[When(pk=pk, then=pos) for pos, pk in enumerate(top_team_ids)]
+        )
+
+        context['top_teams'] = (
+            Team.objects.filter(pk__in=top_team_ids).select_related('conference').prefetch_related(
+                Prefetch(
+                    'season_stats',
+                    queryset=TeamSeasonStats.objects.filter(season=current_year),
+                    to_attr='_current_stats',
+                )
+            ).order_by(preserved_order)
+        )
+
         context['conferences'] = Conference.objects.all().order_by('name')[:3]
-        
-        # Platform stats
+
+        # Use.count() — single query each, not loading all objects
         context['total_teams'] = Team.objects.count()
         context['total_conferences'] = Conference.objects.count()
         context['total_games'] = Game.objects.count()
-        
+
         return context
 
 
 class AboutView(TemplateView):
     """Static about/info page. No model data needed."""
     template_name = 'opencourt/about.html'
+
 class TeamListView(ListView):
-    """
-    Displays all Division I teams in a filterable list.
-
-    Template: teams.html
-    Context variables:
-      team_list — all Team objects (auto-named by ListView from the model),
-                  each with conference select_related to avoid N+1 on card rendering.
-      conference_list — all Conference objects, added via get_context_data for the
-                        conference filter dropdown.
-
-    The template supports client-side filtering by conference using JS —
-    no server-side filtering is needed since the full team list is small
-    enough (~360 teams) to send in one response.
-    """
     model = Team
     template_name = 'opencourt/teams.html'
-
+    
     def get_queryset(self):
-      return Team.objects.select_related('conference').order_by('school')
+        current_year = date.today().year
+        
+        qs = (
+            Team.objects.select_related('conference').prefetch_related(
+                Prefetch(
+                    'season_stats',
+                    queryset=TeamSeasonStats.objects.filter(season=current_year),
+                    to_attr='_current_stats',
+                )
+            ).order_by('school')
+        )
+
+        q = self.request.GET.get('q')
+        if q:
+            qs = qs.filter(
+                Q(school__icontains=q) |
+                Q(mascot__icontains=q) |
+                Q(display_name__icontains=q)
+            )
+        return qs
 
     def get_context_data(self, **kwargs):
-      context = super().get_context_data(**kwargs)
-      context['conference_list'] = Conference.objects.order_by('abbrv')
-      return context
+        context = super().get_context_data(**kwargs)
+        context['conference_list'] = Conference.objects.order_by('abbrv')
+        return context
+    
 class ConferenceListView(ListView):
     """
     Two-panel conference browser: left sidebar of conference buttons, right
