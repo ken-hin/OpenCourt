@@ -1,55 +1,219 @@
-<div class="card bg-base-200 shadow-sm">
-  <div class="card-body">
-    <h2 class="card-title text-2xl">{{ conference.name }}</h2>
-    <div class="divider my-1"></div>
-    
-    <!-- Conference Stats -->
-    <div class="stats stats-vertical lg:stats-horizontal shadow mb-4">
-      <div class="stat">
-        <div class="stat-title">Teams</div>
-        <div class="stat-value">{{ conference.team_count }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat-title">Avg Win %</div>
-        <div class="stat-value">{{ conference.avg_win_pct|floatformat:1 }}%</div>
-      </div>
-      <div class="stat">
-        <div class="stat-title">Total Wins</div>
-        <div class="stat-value">{{ conference.total_wins|floatformat:0 }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat-title">Total Losses</div>
-        <div class="stat-value">{{ conference.total_losses|floatformat:0 }}</div>
+{# Conference detail card — included by conferences.html for each conference panel #}
+
+<div class="space-y-6">
+
+  {# ═══════════════════════ CONFERENCE HEADER ═══════════════════════ #}
+  <div class="card bg-base-200 shadow-md">
+    <div class="card-body pb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 class="text-2xl font-bold">{{ conference.name }}</h2>
+          <span class="badge badge-primary badge-sm mt-1">{{ conference.abbrv }}</span>
+        </div>
       </div>
     </div>
 
-    <div class="overflow-x-auto">
-      <table class="table">
-        <!-- head -->
-        <thead>
-        <tr>
-          <th>Rank</th>
-          <th>Name</th>
-          <th>Record</th>
-          <th>Win %</th>
-        </tr>
-        </thead>
-        <tbody>
-      {% for team in conference.teams.all %}
-        <tr class="hover:bg-base-100">
-          <td>{{ forloop.counter }}</td>
-          <td><a href="{% url 'opencourt:team-detail' team.slug %}">{{ team.school }}</a></td>
-          {% if team.current_season %}
-            <td>{{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}</td>
-            <td>{{ team.current_season.win_pct|floatformat:1 }}</td>
-          {% else %}
-            <td>—</td>
-            <td>—</td>
-          {% endif %}
-        </tr>
-      {% endfor %}
-        </tbody>
-      </table>
+    {# Aggregate Stats Bar #}
+    <div class="stats stats-vertical sm:stats-horizontal w-full border-t border-base-300">
+      <div class="stat py-3">
+        <div class="stat-title text-xs">Teams</div>
+        <div class="stat-value text-xl">{{ conference.team_count }}</div>
+      </div>
+      <div class="stat py-3">
+        <div class="stat-title text-xs">Avg Win %</div>
+        <div class="stat-value text-xl
+          {% if conference.avg_win_pct >= 55 %}text-success
+          {% elif conference.avg_win_pct >= 45 %}text-warning
+          {% else %}text-error{% endif %}">
+          {% if conference.avg_win_pct is not None %}
+            {{ conference.avg_win_pct|floatformat:1 }}%
+          {% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="stat py-3">
+        <div class="stat-title text-xs">Total Wins</div>
+        <div class="stat-value text-xl text-success">
+          {% if conference.total_wins is not None %}
+            {{ conference.total_wins|floatformat:0 }}
+          {% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="stat py-3">
+        <div class="stat-title text-xs">Total Losses</div>
+        <div class="stat-value text-xl text-error">
+          {% if conference.total_losses is not None %}
+            {{ conference.total_losses|floatformat:0 }}
+          {% else %}—{% endif %}
+        </div>
+      </div>
+      {% if conference.total_wins is not None and conference.total_losses is not None %}
+      <div class="stat py-3">
+        <div class="stat-title text-xs">Overall Record</div>
+        <div class="stat-value text-xl font-mono">
+          {{ conference.total_wins|floatformat:0 }}-{{ conference.total_losses|floatformat:0 }}
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
+
+  {# ═══════════════════════ STANDINGS TABLE ═══════════════════════ #}
+  <div class="card bg-base-200 shadow-md">
+    <div class="card-body p-0">
+      <div class="flex items-center justify-between px-5 pt-5 pb-3">
+        <h3 class="card-title text-lg">
+          <i class="fa-solid fa-ranking-star text-primary"></i>
+          Conference Standings
+        </h3>
+        <span class="badge badge-ghost badge-sm">{{ conference.team_count }} teams</span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="table table-sm">
+          <thead>
+            <tr class="bg-base-300 text-xs uppercase tracking-wider">
+              <th class="w-12 text-center">#</th>
+              <th>Team</th>
+              <th class="text-center">Record</th>
+              <th class="text-center">Win %</th>
+              <th class="text-center hidden md:table-cell">Off Rtg</th>
+              <th class="text-center hidden md:table-cell">Def Rtg</th>
+              <th class="text-center hidden lg:table-cell">Net</th>
+              <th class="text-center hidden lg:table-cell">Pace</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for team in conference.teams.all %}
+            <tr class="hover cursor-pointer transition-colors"
+                onclick="window.location='{% url 'opencourt:team-detail' team.slug %}'">
+
+              {# Rank #}
+              <td class="text-center">
+                <span class="font-bold text-sm
+                  {% if forloop.counter <= 3 %}text-primary{% endif %}">
+                  {{ forloop.counter }}
+                </span>
+              </td>
+
+              {# Team #}
+              <td>
+                <div class="flex items-center gap-2">
+                  {% if team.primary_color %}
+                  <div class="w-2 h-8 rounded-full flex-shrink-0"
+                       style="background-color: {{ team.primary_color }};"></div>
+                  {% endif %}
+                  <div class="min-w-0">
+                    <div class="font-semibold text-sm">{{ team.school }}</div>
+                    {% if team.mascot %}
+                    <div class="text-xs opacity-40 hidden sm:block">{{ team.mascot }}</div>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+
+              {# Record #}
+              <td class="text-center font-mono text-sm">
+                {% if team.current_season %}
+                  <span class="font-semibold">{{ team.current_season.wins|floatformat:0 }}</span><span class="opacity-40">-</span>{{ team.current_season.losses|floatformat:0 }}
+                {% else %}—{% endif %}
+              </td>
+
+              {# Win % #}
+              <td class="text-center">
+                {% if team.current_season and team.current_season.win_pct is not None %}
+                <span class="font-mono text-sm font-bold
+                  {% if team.current_season.win_pct >= 75 %}text-success
+                  {% elif team.current_season.win_pct >= 50 %}text-warning
+                  {% else %}text-error{% endif %}">
+                  {{ team.current_season.win_pct|floatformat:1 }}%
+                </span>
+                {% else %}—{% endif %}
+              </td>
+
+              {# Off Rating #}
+              <td class="text-center font-mono text-sm hidden md:table-cell">
+                {% if team.current_season and team.current_season.off_rating %}
+                <span class="{% if team.current_season.off_rating >= 110 %}text-success{% endif %}">
+                  {{ team.current_season.off_rating|floatformat:1 }}
+                </span>
+                {% else %}—{% endif %}
+              </td>
+
+              {# Def Rating #}
+              <td class="text-center font-mono text-sm hidden md:table-cell">
+                {% if team.current_season and team.current_season.opp_rating %}
+                <span class="{% if team.current_season.opp_rating <= 95 %}text-success{% endif %}">
+                  {{ team.current_season.opp_rating|floatformat:1 }}
+                </span>
+                {% else %}—{% endif %}
+              </td>
+
+              {# Net #}
+              <td class="text-center font-mono text-sm font-bold hidden lg:table-cell">
+                {% if team.current_season and team.current_season.off_rating and team.current_season.opp_rating %}
+                <span class="{% if team.current_season.off_rating > team.current_season.opp_rating %}text-success{% else %}text-error{% endif %}">
+                  {% if team.current_season.off_rating > team.current_season.opp_rating %}+{% endif %}{{ team.current_season.point_margin|floatformat:1 }}
+                </span>
+                {% else %}—{% endif %}
+              </td>
+
+              {# Pace #}
+              <td class="text-center font-mono text-sm hidden lg:table-cell">
+                {% if team.current_season and team.current_season.pace %}
+                  {{ team.current_season.pace|floatformat:1 }}
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="8" class="text-center py-8 opacity-50">No teams in this conference.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ═══════════════════════ TEAM CARDS GRID ═══════════════════════ #}
+  <div>
+    <h3 class="text-lg font-bold mb-3">
+      <i class="fa-solid fa-users text-secondary"></i>
+      Teams
+    </h3>
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+      {% for team in conference.teams.all %}
+      <a href="{% url 'opencourt:team-detail' team.slug %}"
+         class="card shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1 group overflow-hidden">
+        {# Team color accent #}
+        <div class="h-1.5 w-full"
+             style="background-color: {{ team.primary_color|default:'#6366f1' }};"></div>
+        <div class="card-body p-3">
+          <div class="font-bold text-sm group-hover:text-primary transition-colors truncate">
+            {{ team.school }}
+          </div>
+          {% if team.mascot %}
+          <div class="text-xs opacity-40 truncate">{{ team.mascot }}</div>
+          {% endif %}
+          {% if team.current_season %}
+          <div class="flex items-center justify-between mt-2">
+            <span class="font-mono text-sm font-bold">
+              {{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}
+            </span>
+            {% if team.current_season.win_pct is not None %}
+            <span class="badge badge-xs
+              {% if team.current_season.win_pct >= 75 %}badge-success
+              {% elif team.current_season.win_pct >= 50 %}badge-warning
+              {% else %}badge-error{% endif %}">
+              {{ team.current_season.win_pct|floatformat:0 }}%
+            </span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
 </div>

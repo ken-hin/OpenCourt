@@ -1,10 +1,313 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}About — OpenCourt{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto py-12 px-6">
-    <h1 class="text-4xl font-bold mb-4">About</h1>
-    <p>About our project here</p>
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+
+  {# ═══════════════════════ HERO ═══════════════════════ #}
+  <div class="text-center mb-12">
+    <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">
+      About OpenCourt
+    </h1>
+    <p class="text-lg opacity-70 max-w-2xl mx-auto">
+      Free, open-source college basketball analytics for fans who want more
+      than box scores.
+    </p>
+  </div>
+
+  {# ═══════════════════════ WHAT IS OPENCOURT ═══════════════════════ #}
+  <div class="card bg-base-200 shadow mb-8">
+    <div class="card-body">
+      <h2 class="card-title text-2xl">🏀 What is OpenCourt?</h2>
+      <div class="divider mt-0 mb-2"></div>
+      <div class="prose prose-sm max-w-none opacity-80">
+        <p>
+          OpenCourt is a college basketball analytics platform built to make
+          advanced stats accessible to everyone — no paywall, no subscription,
+          no catch. We pull data from every Division I men's basketball program
+          and transform it into the kind of analysis that used to be locked
+          behind expensive paywalls.
+        </p>
+        <p>
+          Whether you're a casual fan trying to understand why your team keeps
+          losing close games, a bracket builder looking for upset picks, or a
+          stats nerd who dreams in efficiency ratings — OpenCourt has something
+          for you.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {# ═══════════════════════ THE FOUR FACTORS ═══════════════════════ #}
+  <div class="card bg-base-200 shadow mb-8">
+    <div class="card-body">
+      <h2 class="card-title text-2xl">📐 The Four Factors</h2>
+      <div class="divider mt-0 mb-2"></div>
+      <p class="text-sm opacity-70 mb-4">
+        Our analysis is built on Dean Oliver's
+        <strong>Four Factors of Basketball Success</strong> — the framework
+        used by NBA front offices and top college programs to evaluate team
+        performance. These four metrics explain roughly 90% of why teams win
+        or lose.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {# Factor 1: Shooting #}
+        <div class="bg-base-300 rounded-box p-5">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="badge badge-primary badge-lg font-bold">40%</div>
+            <h3 class="font-bold text-lg">Shooting</h3>
+          </div>
+          <p class="text-sm opacity-70 mb-2">
+            Measured by <strong>Effective Field Goal %</strong> (eFG%), which
+            accounts for three-pointers being worth more than two-pointers.
+          </p>
+          <div class="bg-base-100 rounded p-3 font-mono text-xs opacity-60">
+            eFG% = (FG + 0.5 × 3PM) / FGA
+          </div>
+        </div>
+
+        {# Factor 2: Turnovers #}
+        <div class="bg-base-300 rounded-box p-5">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="badge badge-secondary badge-lg font-bold">25%</div>
+            <h3 class="font-bold text-lg">Turnovers</h3>
+          </div>
+          <p class="text-sm opacity-70 mb-2">
+            Measured by <strong>Turnover Ratio</strong> — turnovers committed
+            per 100 possessions. Every turnover is a wasted scoring opportunity.
+          </p>
+          <div class="bg-base-100 rounded p-3 font-mono text-xs opacity-60">
+            TOV% = Turnovers / Possessions × 100
+          </div>
+        </div>
+
+        {# Factor 3: Rebounding #}
+        <div class="bg-base-300 rounded-box p-5">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="badge badge-accent badge-lg font-bold">20%</div>
+            <h3 class="font-bold text-lg">Rebounding</h3>
+          </div>
+          <p class="text-sm opacity-70 mb-2">
+            Measured by <strong>Offensive Rebound %</strong> (ORB%) — the
+            percentage of available offensive rebounds a team grabs, creating
+            second-chance points.
+          </p>
+          <div class="bg-base-100 rounded p-3 font-mono text-xs opacity-60">
+            ORB% = Off Rebounds / (Off Rebounds + Opp Def Rebounds)
+          </div>
+        </div>
+
+        {# Factor 4: Free Throws #}
+        <div class="bg-base-300 rounded-box p-5">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="badge badge-info badge-lg font-bold">15%</div>
+            <h3 class="font-bold text-lg">Free Throws</h3>
+          </div>
+          <p class="text-sm opacity-70 mb-2">
+            Measured by <strong>Free Throw Rate</strong> (FTR) — free throw
+            attempts relative to field goal attempts. Getting to the line is
+            one of the most efficient ways to score.
+          </p>
+          <div class="bg-base-100 rounded p-3 font-mono text-xs opacity-60">
+            FT Rate = FTA / FGA
+          </div>
+        </div>
+      </div>
+
+      <p class="text-xs opacity-50 mt-4">
+        Source: Dean Oliver, <em>Basketball on Paper</em> (2004).
+        See also <a href="https://www.basketball-reference.com/about/factors.html"
+        class="link link-primary" target="_blank" rel="noopener">Basketball Reference</a>.
+      </p>
+    </div>
+  </div>
+
+  {# ═══════════════════════ EFFICIENCY RATINGS ═══════════════════════ #}
+  <div class="card bg-base-200 shadow mb-8">
+    <div class="card-body">
+      <h2 class="card-title text-2xl">⚡ Efficiency Ratings</h2>
+      <div class="divider mt-0 mb-2"></div>
+      <div class="prose prose-sm max-w-none opacity-80">
+        <p>
+          Raw points per game can be misleading — a team that scores 85 points
+          in a fast-paced game isn't necessarily better than one scoring 65 in a
+          slower one. That's why we use <strong>tempo-independent efficiency
+          ratings</strong>:
+        </p>
+      </div>
+
+      <div class="overflow-x-auto mt-4">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>What It Measures</th>
+              <th class="text-center">Elite</th>
+              <th class="text-center">Average</th>
+              <th class="text-center">Poor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="font-semibold">Offensive Rating</td>
+              <td class="text-sm opacity-70">Points scored per 100 possessions</td>
+              <td class="text-center"><span class="badge badge-success badge-sm">115+</span></td>
+              <td class="text-center"><span class="badge badge-warning badge-sm">100–110</span></td>
+              <td class="text-center"><span class="badge badge-error badge-sm">&lt;100</span></td>
+            </tr>
+            <tr>
+              <td class="font-semibold">Defensive Rating</td>
+              <td class="text-sm opacity-70">Points allowed per 100 possessions</td>
+              <td class="text-center"><span class="badge badge-success badge-sm">&lt;95</span></td>
+              <td class="text-center"><span class="badge badge-warning badge-sm">95–105</span></td>
+              <td class="text-center"><span class="badge badge-error badge-sm">105+</span></td>
+            </tr>
+            <tr>
+              <td class="font-semibold">Net Rating</td>
+              <td class="text-sm opacity-70">Off Rating − Def Rating</td>
+              <td class="text-center"><span class="badge badge-success badge-sm">+15</span></td>
+              <td class="text-center"><span class="badge badge-warning badge-sm">0 to +10</span></td>
+              <td class="text-center"><span class="badge badge-error badge-sm">Negative</span></td>
+            </tr>
+            <tr>
+              <td class="font-semibold">Pace</td>
+              <td class="text-sm opacity-70">Possessions per 40 minutes</td>
+              <td class="text-center" colspan="3"><span class="text-xs opacity-50">~68 avg · Style indicator, not quality</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ═══════════════════════ PREDICTIONS ═══════════════════════ #}
+  <div class="card bg-base-200 shadow mb-8">
+    <div class="card-body">
+      <h2 class="card-title text-2xl">🔮 Predictions</h2>
+      <div class="divider mt-0 mb-2"></div>
+      <div class="prose prose-sm max-w-none opacity-80">
+        <p>
+          Our prediction model uses a machine learning classifier trained on
+          historical game outcomes. The feature set includes efficiency
+          differentials, Four Factors matchups, pace adjustments, and home
+          court advantage.
+        </p>
+        <p>
+          Every upcoming game gets a predicted winner and a confidence score.
+          After games are played, we track our accuracy on the
+          <a href="{% url 'opencourt:upcoming' %}?mode=results" class="link link-primary">Results</a>
+          page so you can see exactly how the model performs — no cherry-picking.
+        </p>
+      </div>
+
+      <div class="alert alert-warning mt-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+        </svg>
+        <div>
+          <p class="font-semibold text-sm">Predictions are for entertainment only</p>
+          <p class="text-xs opacity-80">
+            All predictions are probabilistic estimates based on season-level
+            statistics. They do not account for injuries, suspensions, travel
+            fatigue, or other game-day factors. Do not use predictions as the
+            sole basis for any financial decisions.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ═══════════════════════ DATA SOURCE ═══════════════════════ #}
+  <div class="card bg-base-200 shadow mb-8">
+    <div class="card-body">
+      <h2 class="card-title text-2xl">📡 Data Source</h2>
+      <div class="divider mt-0 mb-2"></div>
+      <div class="prose prose-sm max-w-none opacity-80">
+        <p>
+          All data is sourced from the
+          <a href="https://collegebasketballdata.com" class="link link-primary"
+             target="_blank" rel="noopener">College Basketball Data API</a>
+          (CBBData), which aggregates official NCAA statistics. Data is synced
+          regularly throughout the season to keep stats, scores, and rankings
+          up to date.
+        </p>
+        <p>
+          We currently track:
+        </p>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+        <div class="bg-base-300 rounded-box p-4 text-center">
+          <div class="text-2xl font-bold text-primary">360+</div>
+          <div class="text-xs opacity-60 mt-1">D1 Teams</div>
+        </div>
+        <div class="bg-base-300 rounded-box p-4 text-center">
+          <div class="text-2xl font-bold text-secondary">34</div>
+          <div class="text-xs opacity-60 mt-1">Conferences</div>
+        </div>
+        <div class="bg-base-300 rounded-box p-4 text-center">
+          <div class="text-2xl font-bold text-accent">5,500+</div>
+          <div class="text-xs opacity-60 mt-1">Games / Season</div>
+        </div>
+        <div class="bg-base-300 rounded-box p-4 text-center">
+          <div class="text-2xl font-bold text-info">20+</div>
+          <div class="text-xs opacity-60 mt-1">Seasons of History</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ═══════════════════════ TECH STACK ═══════════════════════ #}
+  <div class="card bg-base-200 shadow mb-8">
+    <div class="card-body">
+      <h2 class="card-title text-2xl">🛠️ Built With</h2>
+      <div class="divider mt-0 mb-2"></div>
+      <div class="flex flex-wrap gap-2">
+        <span class="badge badge-lg badge-outline gap-1">🐍 Python</span>
+        <span class="badge badge-lg badge-outline gap-1">🟢 Django</span>
+        <span class="badge badge-lg badge-outline gap-1">🎨 Tailwind CSS</span>
+        <span class="badge badge-lg badge-outline gap-1">🌼 DaisyUI</span>
+        <span class="badge badge-lg badge-outline gap-1">📊 ApexCharts</span>
+        <span class="badge badge-lg badge-outline gap-1">🤖 scikit-learn</span>
+        <span class="badge badge-lg badge-outline gap-1">🗄️ SQLite</span>
+        <span class="badge badge-lg badge-outline gap-1">📡 CBBData API</span>
+      </div>
+    </div>
+  </div>
+
+  {# ═══════════════════════ CONTACT / CREDITS ═══════════════════════ #}
+  <div class="card bg-base-200 shadow mb-8">
+    <div class="card-body">
+      <h2 class="card-title text-2xl">👋 Credits</h2>
+      <div class="divider mt-0 mb-2"></div>
+      <div class="prose prose-sm max-w-none opacity-80">
+        <p>
+          OpenCourt is a project built by a college basketball fans
+          who wanted better free analytics tools. It's not affiliated with
+          the NCAA, any university, or any sports betting platform.
+        </p>
+        <p>
+          Special thanks to the
+          <a href="https://collegebasketballdata.com" class="link link-primary"
+             target="_blank" rel="noopener">CBBData</a> team for providing
+          a free, comprehensive API that makes projects like this possible.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {# ═══════════════════════ CTA ═══════════════════════ #}
+  <div class="text-center py-8">
+    <p class="text-lg font-semibold mb-4 opacity-70">Ready to explore?</p>
+    <div class="flex gap-3 justify-center flex-wrap">
+      <a href="{% url 'opencourt:teams' %}" class="btn btn-primary">Browse Teams</a>
+      <a href="{% url 'opencourt:rankings' %}" class="btn btn-secondary">View Rankings</a>
+      <a href="{% url 'opencourt:upcoming' %}" class="btn btn-accent">Today's Predictions</a>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

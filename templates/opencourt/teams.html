@@ -1,37 +1,441 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load humanize %}
+
 {% block title %}Teams — OpenCourt{% endblock %}
 
 {% block content %}
+<div class="container mx-auto px-4 py-8 max-w-7xl">
 
-  <!-- Search/Filtering -->
-  <div class="container mx-auto py-15">
-    <div class="flex flex-col gap-4 my-7 mx-15 content-stretch">
-      <!-- Search bar: Need to implement actual search functionality -->
-      <div class="join flex items-center">
-        <label class="input join-item grow-4">
-          <input type="search" placeholder="Search" />
-        </label>
-        <button class="btn btn-neutral join-item grow-0">
-          <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  {# ═══════════════════════ HEADER ═══════════════════════ #}
+  <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-3xl font-bold tracking-tight">🏀 All Teams</h1>
+      <p class="text-sm opacity-60 mt-1">
+        <span id="visible-count">{{ team_list|length }}</span> Division I programs
+      </p>
+    </div>
+
+    <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+      {# --- Search --- #}
+      <div class="join">
+        <input
+          type="search"
+          id="team-search"
+          placeholder="Search teams..."
+          class="input input-bordered join-item w-full sm:w-56 input-sm"
+          autocomplete="off"
+        />
+        <span class="btn btn-neutral join-item btn-sm">
+          <i class="fa-solid fa-magnifying-glass"></i>
+        </span>
+      </div>
+
+      {# --- View Toggle --- #}
+      <div class="join">
+        <button class="btn btn-sm join-item btn-primary view-toggle" data-view="grid" title="Card View">
+          <i class="fa-solid fa-grip"></i>
+        </button>
+        <button class="btn btn-sm join-item btn-ghost view-toggle" data-view="table" title="Table View">
+          <i class="fa-solid fa-table-list"></i>
         </button>
       </div>
-      <!-- Conference Filter -->
-    {% include 'opencourt/components/conference_filter.html' %}
     </div>
-    <!-- Team Cards -->
-    <div class="flex flex-wrap gap-4 justify-center">
+  </div>
+
+  {# ═══════════════════════ FILTERS BAR ═══════════════════════ #}
+  <div class="bg-base-200 rounded-box p-4 mb-6">
+    <div class="flex flex-col md:flex-row gap-3 items-start md:items-center">
+      <div class="flex flex-wrap gap-2 flex-1" id="conf-filters">
+        <button class="btn btn-xs btn-primary conf-filter" data-conf="all">All</button>
+        {% for conf in conference_list %}
+        <button class="btn btn-xs btn-ghost conf-filter" data-conf="{{ conf.slug }}">
+          {{ conf.abbrv }}
+        </button>
+        {% endfor %}
+      </div>
+
+      {# --- Sort Dropdown --- #}
+      <div class="dropdown dropdown-end">
+        <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-1">
+          <i class="fa-solid fa-arrow-down-wide-short"></i>
+          Sort: <span id="sort-label" class="font-semibold">A → Z</span>
+        </div>
+        <ul tabindex="0" class="dropdown-content menu bg-base-300 rounded-box z-20 w-52 p-2 shadow-lg">
+          <li><a href="#" class="sort-option" data-sort="name-asc" data-label="A → Z">Name (A → Z)</a></li>
+          <li><a href="#" class="sort-option" data-sort="name-desc" data-label="Z → A">Name (Z → A)</a></li>
+          <li><a href="#" class="sort-option" data-sort="winpct-desc" data-label="Win %">Win % (High → Low)</a></li>
+          <li><a href="#" class="sort-option" data-sort="wins-desc" data-label="Most Wins">Most Wins</a></li>
+          <li><a href="#" class="sort-option" data-sort="offrtg-desc" data-label="Off Rating">Off Rating (Best)</a></li>
+          <li><a href="#" class="sort-option" data-sort="defrtg-asc" data-label="Def Rating">Def Rating (Best)</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  {# ═══════════════════════ CARD GRID VIEW ═══════════════════════ #}
+  <div id="grid-view">
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" id="team-grid">
       {% for team in team_list %}
-      <a href="{% url 'opencourt:team-detail' team.slug %}" class="hover-3d team-card" id="{{ team.conference.slug }}-section">
-          {% include 'opencourt/components/team_card.html' %}
+      <a href="{% url 'opencourt:team-detail' team.slug %}"
+         class="team-card card bg-base-200 shadow-md hover:shadow-xl transition-all duration-200 hover:-translate-y-1 group"
+         data-conference="{{ team.conference.slug|default:'independent' }}"
+         data-name="{{ team.school|lower }}"
+         data-mascot="{{ team.mascot|lower|default:'' }}"
+         data-wins="{{ team.current_season.wins|default:'0' }}"
+         data-losses="{{ team.current_season.losses|default:'0' }}"
+         data-winpct="{{ team.current_season.win_pct|default:'0' }}"
+         data-offrtg="{{ team.current_season.off_rating|default:'0' }}"
+         data-defrtg="{{ team.current_season.opp_rating|default:'999' }}">
+
+        <div class="card-body p-4">
+          <div class="h-1 w-full rounded-full mb-3 opacity-80"
+               style="background: linear-gradient(90deg,
+                 {{ team.primary_color|default:'#6366f1' }},
+                 {{ team.secondary_color|default:team.primary_color|default:'#6366f1' }});"></div>
+
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <h3 class="font-bold text-sm leading-tight group-hover:text-primary transition-colors truncate">
+                {{ team.school }}
+              </h3>
+              {% if team.mascot %}
+              <p class="text-xs opacity-50 truncate">{{ team.mascot }}</p>
+              {% endif %}
+            </div>
+            {% if team.conference %}
+            <span class="badge badge-neutral badge-xs flex-shrink-0 mt-0.5">
+              {{ team.conference.abbrv }}
+            </span>
+            {% endif %}
+          </div>
+
+          {% if team.current_season %}
+          <div class="mt-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-mono text-lg font-bold">
+                {{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}
+              </span>
+              {% if team.current_season.win_pct is not None %}
+              <span class="badge badge-sm
+                {% if team.current_season.win_pct >= 75 %}badge-success
+                {% elif team.current_season.win_pct >= 50 %}badge-warning
+                {% else %}badge-error{% endif %}">
+                {{ team.current_season.win_pct|floatformat:1 }}%
+              </span>
+              {% endif %}
+            </div>
+
+            {% if team.current_season.off_rating and team.current_season.opp_rating %}
+            <div class="grid grid-cols-3 gap-1 text-center">
+              <div class="bg-base-300 rounded px-1 py-1.5">
+                <div class="text-[10px] uppercase tracking-wider opacity-50">Off</div>
+                <div class="font-mono text-xs font-semibold
+                  {% if team.current_season.off_rating >= 110 %}text-success{% endif %}">
+                  {{ team.current_season.off_rating|floatformat:1 }}
+                </div>
+              </div>
+              <div class="bg-base-300 rounded px-1 py-1.5">
+                <div class="text-[10px] uppercase tracking-wider opacity-50">Def</div>
+                <div class="font-mono text-xs font-semibold
+                  {% if team.current_season.opp_rating <= 95 %}text-success{% endif %}">
+                  {{ team.current_season.opp_rating|floatformat:1 }}
+                </div>
+              </div>
+              <div class="bg-base-300 rounded px-1 py-1.5">
+                <div class="text-[10px] uppercase tracking-wider opacity-50">Net</div>
+                <div class="font-mono text-xs font-bold
+                  {% if team.current_season.off_rating > team.current_season.opp_rating %}text-success
+                  {% else %}text-error{% endif %}">
+                  {% if team.current_season.off_rating > team.current_season.opp_rating %}+{% endif %}{{ team.current_season.point_margin|floatformat:1 }}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% else %}
+          <div class="mt-3 text-center py-3">
+            <span class="text-xs opacity-40">No stats available</span>
+          </div>
+          {% endif %}
+        </div>
       </a>
+      {% empty %}
+      <div class="col-span-full text-center py-16">
+        <div class="text-5xl mb-4">🔍</div>
+        <p class="text-lg opacity-60 font-semibold">No teams found</p>
+      </div>
       {% endfor %}
     </div>
   </div>
 
-  <script src="{% static 'js/conference_filter.js' %}"></script>
-  <script src="{% static 'js/card_contrast.js' %}"></script>
-  <style src="{% static 'css/main.css' %}"></style>
+  {# ═══════════════════════ TABLE VIEW ═══════════════════════ #}
+  <div id="table-view" class="hidden">
+    <div class="overflow-x-auto rounded-box bg-base-200">
+      <table class="table table-zebra table-sm">
+        <thead>
+          <tr class="bg-base-300">
+            <th class="w-12">#</th>
+            <th>Team</th>
+            <th>Conference</th>
+            <th class="text-center">Record</th>
+            <th class="text-center">Win %</th>
+            <th class="text-center">Off Rtg</th>
+            <th class="text-center">Def Rtg</th>
+            <th class="text-center">Net</th>
+            <th class="text-center">Pace</th>
+            <th class="text-center">eFG%</th>
+          </tr>
+        </thead>
+        <tbody id="team-table-body">
+          {% for team in team_list %}
+          <tr class="team-row hover cursor-pointer"
+              onclick="window.location.href='{% url 'opencourt:team-detail' team.slug %}'"
+              data-conference="{{ team.conference.slug|default:'independent' }}"
+              data-name="{{ team.school|lower }}"
+              data-mascot="{{ team.mascot|lower|default:'' }}">
+            <td class="font-mono text-xs opacity-50">{{ forloop.counter }}</td>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full flex-shrink-0"
+                     style="background-color: {{ team.primary_color|default:'#6366f1' }};"></div>
+                <span class="font-semibold text-sm">{{ team.school }}</span>
+              </div>
+            </td>
+            <td>
+              {% if team.conference %}
+              <span class="badge badge-neutral badge-xs">{{ team.conference.abbrv }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center font-mono text-sm">
+              {% if team.current_season %}
+                {{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if team.current_season and team.current_season.win_pct is not None %}
+              <span class="font-mono text-sm font-bold
+                {% if team.current_season.win_pct >= 75 %}text-success
+                {% elif team.current_season.win_pct >= 50 %}text-warning
+                {% else %}text-error{% endif %}">
+                {{ team.current_season.win_pct|floatformat:1 }}%
+              </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center font-mono text-sm">
+              {% if team.current_season and team.current_season.off_rating %}
+                {{ team.current_season.off_rating|floatformat:1 }}
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center font-mono text-sm">
+              {% if team.current_season and team.current_season.opp_rating %}
+                {{ team.current_season.opp_rating|floatformat:1 }}
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center font-mono text-sm font-bold">
+              {% if team.current_season and team.current_season.off_rating and team.current_season.opp_rating %}
+              <span class="{% if team.current_season.off_rating > team.current_season.opp_rating %}text-success{% else %}text-error{% endif %}">
+                {% if team.current_season.off_rating > team.current_season.opp_rating %}+{% endif %}{{ team.current_season.point_margin|floatformat:1 }}
+              </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center font-mono text-sm">
+              {% if team.current_season and team.current_season.pace %}
+                {{ team.current_season.pace|floatformat:1 }}
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center font-mono text-sm">
+              {% if team.current_season and team.current_season.off_eff_fg_pct %}
+                {{ team.current_season.off_eff_fg_pct|floatformat:1 }}%
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
+  {# ═══════════════════════ NO RESULTS ═══════════════════════ #}
+  <div id="no-results" class="hidden text-center py-16">
+    <div class="text-5xl mb-4">🔍</div>
+    <p class="text-lg opacity-60 font-semibold">No teams match your filters</p>
+    <p class="text-sm opacity-40 mt-1" id="no-results-text"></p>
+    <button class="btn btn-ghost btn-sm mt-3" id="clear-btn">Clear Filters</button>
+  </div>
+
+</div>
+
+{# ═══════════════════════ ALL JS INLINE — NO EXTERNAL DEPS ═══════════════════════ #}
+<script>
+(function() {
+  // ─── Wait for DOM ───
+  const search      = document.getElementById('team-search');
+  const gridView    = document.getElementById('grid-view');
+  const tableView   = document.getElementById('table-view');
+  const noResults   = document.getElementById('no-results');
+  const noResultsTx = document.getElementById('no-results-text');
+  const countEl     = document.getElementById('visible-count');
+  const sortLabelEl = document.getElementById('sort-label');
+  const teamGrid    = document.getElementById('team-grid');
+  const clearBtn    = document.getElementById('clear-btn');
+
+  // All filterable elements
+  const cards = document.querySelectorAll('.team-card');
+  const rows  = document.querySelectorAll('.team-row');
+
+  let activeConf = 'all';
+  let activeView = 'grid';
+
+  // ─── SEARCH ───
+  search.addEventListener('input', applyFilters);
+  search.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      search.value = '';
+      applyFilters();
+    }
+  });
+
+  // ─── CLEAR BUTTON ───
+  clearBtn.addEventListener('click', function() {
+    search.value = '';
+    setActiveConf('all');
+    applyFilters();
+  });
+
+  // ─── CONFERENCE FILTERS ───
+  document.querySelectorAll('.conf-filter').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      setActiveConf(btn.getAttribute('data-conf'));
+      applyFilters();
+    });
+  });
+
+  function setActiveConf(conf) {
+    activeConf = conf;
+    document.querySelectorAll('.conf-filter').forEach(function(b) {
+      if (b.getAttribute('data-conf') === conf) {
+        b.classList.remove('btn-ghost');
+        b.classList.add('btn-primary');
+      } else {
+        b.classList.remove('btn-primary');
+        b.classList.add('btn-ghost');
+      }
+    });
+  }
+
+  // ─── VIEW TOGGLE ───
+  document.querySelectorAll('.view-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      activeView = btn.getAttribute('data-view');
+      document.querySelectorAll('.view-toggle').forEach(function(b) {
+        if (b.getAttribute('data-view') === activeView) {
+          b.classList.remove('btn-ghost');
+          b.classList.add('btn-primary');
+        } else {
+          b.classList.remove('btn-primary');
+          b.classList.add('btn-ghost');
+        }
+      });
+      applyFilters();
+    });
+  });
+
+  // ─── SORTING ───
+  document.querySelectorAll('.sort-option').forEach(function(opt) {
+    opt.addEventListener('click', function(e) {
+      e.preventDefault();
+      var sortKey = opt.getAttribute('data-sort');
+      var label   = opt.getAttribute('data-label');
+      sortLabelEl.textContent = label;
+
+      // Sort the grid cards
+      var cardArr = Array.from(cards);
+      cardArr.sort(function(a, b) {
+        switch (sortKey) {
+          case 'name-asc':
+            return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
+          case 'name-desc':
+            return (b.getAttribute('data-name') || '').localeCompare(a.getAttribute('data-name') || '');
+          case 'winpct-desc':
+            return parseFloat(b.getAttribute('data-winpct') || 0) - parseFloat(a.getAttribute('data-winpct') || 0);
+          case 'wins-desc':
+            return parseFloat(b.getAttribute('data-wins') || 0) - parseFloat(a.getAttribute('data-wins') || 0);
+          case 'offrtg-desc':
+            return parseFloat(b.getAttribute('data-offrtg') || 0) - parseFloat(a.getAttribute('data-offrtg') || 0);
+          case 'defrtg-asc':
+            return parseFloat(a.getAttribute('data-defrtg') || 999) - parseFloat(b.getAttribute('data-defrtg') || 999);
+          default:
+            return 0;
+        }
+      });
+      cardArr.forEach(function(card) { teamGrid.appendChild(card); });
+
+      // Close the dropdown
+      if (document.activeElement) document.activeElement.blur();
+
+      applyFilters();
+    });
+  });
+
+  // ─── MASTER FILTER FUNCTION ───
+  function applyFilters() {
+    var query = search.value.toLowerCase().trim();
+    var visible = 0;
+
+    // Filter cards
+    cards.forEach(function(card) {
+      var name   = card.getAttribute('data-name') || '';
+      var mascot = card.getAttribute('data-mascot') || '';
+      var conf   = card.getAttribute('data-conference') || '';
+
+      var matchSearch = !query || name.indexOf(query) !== -1 || mascot.indexOf(query) !== -1;
+      var matchConf   = activeConf === 'all' || conf === activeConf;
+      var show = matchSearch && matchConf;
+
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    // Filter table rows
+    rows.forEach(function(row) {
+      var name   = row.getAttribute('data-name') || '';
+      var mascot = row.getAttribute('data-mascot') || '';
+      var conf   = row.getAttribute('data-conference') || '';
+
+      var matchSearch = !query || name.indexOf(query) !== -1 || mascot.indexOf(query) !== -1;
+      var matchConf   = activeConf === 'all' || conf === activeConf;
+
+      row.style.display = (matchSearch && matchConf) ? '' : 'none';
+    });
+
+    // Update count
+    countEl.textContent = visible;
+
+    // Show/hide views
+    var hasResults = visible > 0;
+
+    if (activeView === 'grid') {
+      gridView.style.display  = hasResults ? '' : 'none';
+      tableView.style.display = 'none';
+    } else {
+      gridView.style.display  = 'none';
+      tableView.style.display = hasResults ? '' : 'none';
+    }
+
+    noResults.style.display = hasResults ? 'none' : '';
+
+    if (!hasResults) {
+      var parts = [];
+      if (query) parts.push('"' + search.value + '"');
+      if (activeConf !== 'all') parts.push('conference: ' + activeConf);
+      noResultsTx.textContent = parts.length ? 'No results for ' + parts.join(' in ') : '';
+    }
+  }
+
+  // ─── INITIAL STATE ───
+  applyFilters();
+
+})();
+</script>
 {% endblock %}
-

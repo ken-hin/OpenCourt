@@ -569,7 +569,7 @@ git commit -m "short description of what you did"
 # 4. Push your branch to GitHub
 git push -u origin feature/your-feature-name
 
-# 5. Open a Pull Request on GitHub — message Kenneth to review before merging
+# 5. Open a Pull Request on GitHub — message Kenneth to review before merging 
 ```
 
 ### Rules

@@ -1,501 +1,497 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}Matchups — OpenCourt{% endblock %}
+
+{% block title %}
+  {% if mode == "results" %}Results{% else %}Matchups{% endif %} — OpenCourt
+{% endblock %}
 
 {% block content %}
+<div class="container mx-auto px-4 py-8 max-w-7xl">
 
-<div class="container mx-auto pt-20 pb-10 px-4">
-  {# pt-20 clears the fixed navbar at the top of the page. If your navbar  #}
-  {# is taller/shorter, adjust this value (e.g. pt-16 or pt-24).           #}
-
-  {# ─── Page Header ─────────────────────────────────────────────────── #}
-  <div class="mb-6">
-    <h1 class="text-3xl font-bold">
-      {% if mode == "results" %}Results & Predictions{% else %}Matchups{% endif %}
-    </h1>
-    <p class="text-base-content/60 text-sm mt-1">
-      {% if mode == "results" %}
-        Model performance ·
-        {% if show_all %}All completed games{% else %}{{ selected_date|date:"l, F j Y" }}{% endif %}
-      {% else %}
-        Head-to-head stats ·
-        {% if show_all %}All upcoming games{% else %}{{ selected_date|date:"l, F j Y" }}{% endif %}
-      {% endif %}
-    </p>
-  </div>
-
-  {# ─── Mode Toggle ─────────────────────────────────────────────────── #}
-  <div class="flex gap-2 mb-4">
-    <a href="?mode=upcoming"
-       class="btn btn-sm {% if mode == 'upcoming' %}btn-primary{% else %}btn-outline{% endif %}">
-      Upcoming
-    </a>
-    <a href="?mode=results&date=all"
-       class="btn btn-sm {% if mode == 'results' %}btn-primary{% else %}btn-outline{% endif %}">
-      Results
-    </a>
-  </div>
-
-  {# ─── Accuracy Banner (results mode only) ─────────────────────────── #}
-  {% if mode == "results" and accuracy %}
-  <div class="alert {% if accuracy.pct >= 60 %}alert-success{% elif accuracy.pct >= 50 %}alert-warning{% else %}alert-error{% endif %} mb-4">
+  {# ═══════════════════════ HEADER ═══════════════════════ #}
+  <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
     <div>
-      <span class="font-bold text-lg">{{ accuracy.correct }}/{{ accuracy.total }}</span>
-      <span class="text-sm ml-1">predictions correct</span>
-      <span class="font-semibold text-lg ml-3">{{ accuracy.pct }}%</span>
-      <span class="text-sm ml-1">accuracy</span>
+      <h1 class="text-3xl font-bold tracking-tight">
+        {% if mode == "results" %}🏆 Results & Predictions{% else %}🔮 Matchups{% endif %}
+      </h1>
+      <p class="text-sm opacity-60 mt-1">
+        {% if mode == "results" %}
+          Model performance ·
+          {% if show_all %}All completed games{% else %}{{ selected_date|date:"l, F j Y" }}{% endif %}
+        {% else %}
+          Head-to-head predictions ·
+          {% if show_all %}All upcoming games{% else %}{{ selected_date|date:"l, F j Y" }}{% endif %}
+        {% endif %}
+      </p>
+    </div>
+
+    {# Search #}
+    <div class="join w-full md:w-auto">
+      <input type="search" id="team-search"
+             placeholder="Search any team..."
+             class="input input-bordered join-item input-sm w-full md:w-56"
+             autocomplete="off" />
+      <span class="btn btn-neutral join-item btn-sm">
+        <i class="fa-solid fa-magnifying-glass"></i>
+      </span>
     </div>
   </div>
-  {% endif %}
 
-  {# ─── Date Tabs ───────────────────────────────────────────────────── #}
-  {# "Show All" loads ?date=all and passes every future scheduled game.  #}
-  {# The other tabs filter to a single day as before.                    #}
-  <div class="flex gap-2 flex-wrap mb-4">
-
-    {# Show All tab — active when show_all is True in context #}
-    <a href="?mode={{ mode }}&date=all"
-       class="btn btn-sm {% if show_all %}btn-primary{% else %}btn-outline{% endif %}">
-      Show All
-    </a>
-
-    {% for d in upcoming_dates %}
-      <a href="?mode={{ mode }}&date={{ d|date:'Y-m-d' }}"
-         class="btn btn-sm {% if not show_all and d == selected_date %}btn-primary{% else %}btn-outline{% endif %}">
-        {% if d == today %}
-          Today
-        {% elif d == tomorrow %}
-          Tomorrow
-        {% else %}
-          {{ d|date:"D M j" }}
-        {% endif %}
+  {# ═══════════════════════ MODE TOGGLE ═══════════════════════ #}
+  <div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+    <div class="join">
+      <a href="?mode=upcoming"
+         class="btn btn-sm join-item {% if mode == 'upcoming' %}btn-primary{% else %}btn-ghost{% endif %}">
+        <i class="fa-solid fa-calendar-day mr-1"></i> Upcoming
       </a>
+      <a href="?mode=results&date=all"
+         class="btn btn-sm join-item {% if mode == 'results' %}btn-primary{% else %}btn-ghost{% endif %}">
+        <i class="fa-solid fa-chart-column mr-1"></i> Results
+      </a>
+    </div>
+
+    {# Accuracy Banner (results mode) #}
+    {% if mode == "results" and accuracy %}
+    <div class="flex items-center gap-3 bg-base-200 rounded-box px-4 py-2">
+      <div class="radial-progress text-sm
+        {% if accuracy.pct >= 60 %}text-success
+        {% elif accuracy.pct >= 50 %}text-warning
+        {% else %}text-error{% endif %}"
+        style="--value:{{ accuracy.pct }}; --size:3rem; --thickness:4px;"
+        role="progressbar">
+        <span class="text-xs font-bold">{{ accuracy.pct }}%</span>
+      </div>
+      <div>
+        <div class="font-bold text-sm">{{ accuracy.correct }}/{{ accuracy.total }} correct</div>
+        <div class="text-xs opacity-50">Prediction accuracy</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ═══════════════════════ DATE TABS ═══════════════════════ #}
+  <div class="flex gap-2 flex-wrap mb-6" id="date-tabs">
+    <a href="?mode={{ mode }}&date=all"
+       class="btn btn-sm {% if show_all %}btn-primary{% else %}btn-ghost{% endif %}">
+      All
+    </a>
+    {% for d in upcoming_dates %}
+    <a href="?mode={{ mode }}&date={{ d|date:'Y-m-d' }}"
+       class="btn btn-sm {% if not show_all and d == selected_date %}btn-primary{% else %}btn-ghost{% endif %}">
+      {% if d == today %}
+        Today
+      {% elif d == tomorrow %}
+        Tomorrow
+      {% else %}
+        {{ d|date:"D j" }}
+      {% endif %}
+    </a>
     {% endfor %}
   </div>
 
-  {# ─── Search Bar ──────────────────────────────────────────────────── #}
-  {# Search is INDEPENDENT of the date tab. It always searches across    #}
-  {# all_games (every future scheduled game), not just the current day.  #}
-  {# When a query is active:                                             #}
-  {#   - #games-list (date-filtered) is hidden                           #}
-  {#   - #search-results (all future games) is shown, filtered by query  #}
-  {# When the input is cleared both lists return to their default state. #}
-  <div class="mb-6">
-    <input
-      type="text"
-      id="team-search"
-      placeholder="Search any team — shows all their upcoming games…"
-      class="input input-bordered w-full max-w-sm"
-      oninput="handleSearch(this.value)"
-    />
-  </div>
-
-  {# ─── Date-filtered game list (visible when search is empty) ─────── #}
-  <div class="flex flex-row gap-4" id="games-list">
+  {# ═══════════════════════ GAME CARDS (date-filtered) ═══════════════════════ #}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="games-list">
 
     {% for item in games %}
+    <div class="game-card card bg-base-200 shadow-md hover:shadow-lg transition-shadow overflow-hidden"
+         data-teams="{{ item.home_team.school|lower }} {{ item.away_team.school|lower }} {{ item.home_team.abbrv|lower }} {{ item.away_team.abbrv|lower }}">
 
-      {# data-teams drives the JS search filter below #}
-      <div class="card bg-base-200 shadow-md p-4"
-           data-teams="{{ item.home_team.school }} {{ item.away_team.school }}">
+      {# Prediction result accent bar (results mode) #}
+      {% if item.prediction_correct is not None %}
+      <div class="h-1 w-full {% if item.prediction_correct %}bg-success{% else %}bg-error{% endif %}"></div>
+      {% endif %}
 
-        {# Top row: date + venue #}
-        <div class="flex justify-between text-xs opacity-60 mb-3">
-          <span>{{ item.game.start_date|date:"D, M j · g:i A" }}</span>
-          <span>{{ item.game.venue|default:"TBD" }}</span>
+      <div class="card-body p-4">
+
+        {# Top row: date + venue + prediction badge #}
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2 text-xs opacity-60">
+            <i class="fa-regular fa-clock"></i>
+            <span>{{ item.game.start_date|date:"D, M j · g:i A" }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            {% if item.game.neutral_site %}
+            <span class="badge badge-ghost badge-xs">Neutral</span>
+            {% endif %}
+            {% if item.game.venue %}
+            <span class="text-xs opacity-40 hidden sm:inline">{{ item.game.venue }}</span>
+            {% endif %}
+          </div>
         </div>
 
-        {# ── Matchup Row ───────────────────────────────────────────── #}
-        <div class="grid grid-cols-3 items-center">
+        {# ── Matchup Row ── #}
+        <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
 
           {# Home team #}
-          {# gap-5 gives breathing room between the big abbrev and the text block #}
-          <div class="flex items-center gap-5">
-            <p class="font-bold text-4xl leading-none tracking-tight">{{ item.home_team.abbrv }}</p>
-            <div class="flex flex-col gap-1">
-              <p class="font-semibold text-sm leading-tight">{{ item.home_team.school }}</p>
-              <p class="text-xs opacity-60">
-                {{ item.home_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.home_team.current_season.losses|floatformat:0|default:"0" }}
-              </p>
-              <p class="text-xs opacity-40 uppercase tracking-wide">Home</p>
+          <a href="{% url 'opencourt:team-detail' item.home_team.slug %}"
+             class="flex items-center gap-3 group min-w-0" onclick="event.stopPropagation()">
+            {% if item.home_team.primary_color %}
+            <div class="w-2 h-10 rounded-full flex-shrink-0"
+                 style="background-color: {{ item.home_team.primary_color }};"></div>
+            {% endif %}
+            <div class="min-w-0">
+              <div class="font-bold text-lg leading-tight group-hover:text-primary transition-colors truncate">
+                {{ item.home_team.school }}
+              </div>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span class="text-xs opacity-60 font-mono">
+                  {{ item.home_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.home_team.current_season.losses|floatformat:0|default:"0" }}
+                </span>
+                <span class="badge badge-ghost badge-xs">H</span>
+              </div>
             </div>
-          </div>
+          </a>
 
-          {# VS / Score block with prediction + actual result #}
-          <div class="text-center">
+          {# Center: Score / VS / Prediction #}
+          <div class="text-center px-2 min-w-[100px]">
             {% if item.actual %}
-              {# Completed game — show final score #}
-              <div class="font-bold text-xl">{{ item.actual.home_points }} – {{ item.actual.away_points }}</div>
-              <div class="text-xs opacity-60 mt-0.5">Final</div>
+              {# Completed game #}
+              <div class="font-bold text-2xl font-mono">
+                <span class="{% if item.actual.home_points > item.actual.away_points %}text-success{% endif %}">{{ item.actual.home_points }}</span>
+                <span class="opacity-30 mx-1">–</span>
+                <span class="{% if item.actual.away_points > item.actual.home_points %}text-success{% endif %}">{{ item.actual.away_points }}</span>
+              </div>
+              <div class="text-[10px] uppercase tracking-wider opacity-40 mt-0.5">Final</div>
+
               {% if item.prediction %}
+              <div class="mt-1.5">
                 {% if item.prediction_correct %}
-                  <div class="text-xs font-semibold mt-1 text-success">✓ {{ item.prediction.winner.display_name }}</div>
-                  <div class="text-xs opacity-40">Correct</div>
+                <span class="badge badge-success badge-xs gap-1">
+                  <i class="fa-solid fa-check text-[8px]"></i> {{ item.prediction.winner.school }}
+                </span>
                 {% else %}
-                  <div class="text-xs font-semibold mt-1 text-error">✗ {{ item.prediction.winner.display_name }}</div>
-                  <div class="text-xs opacity-40">Incorrect</div>
+                <span class="badge badge-error badge-xs gap-1">
+                  <i class="fa-solid fa-xmark text-[8px]"></i> {{ item.prediction.winner.school }}
+                </span>
                 {% endif %}
-              {% else %}
-                <div class="text-xs opacity-40 mt-1">No prediction</div>
+              </div>
               {% endif %}
+
             {% else %}
-              {# Scheduled game — show prediction only #}
-              <div class="font-bold text-xl">VS</div>
+              {# Scheduled game #}
+              <div class="font-bold text-2xl opacity-30">VS</div>
               {% if item.prediction %}
-                <div class="text-xs font-semibold mt-1">
-                  {{ item.prediction.winner.display_name }}
-                </div>
-                <div class="text-xs opacity-40 mt-0.5">Predicted Winner</div>
+              <div class="mt-1.5">
+                <span class="badge badge-primary badge-sm gap-1">
+                  <i class="fa-solid fa-trophy text-[8px]"></i>
+                  {{ item.prediction.winner.school }}
+                </span>
+              </div>
+              <div class="text-[10px] opacity-40 mt-0.5">Predicted</div>
               {% else %}
-                <div class="text-xs opacity-40 mt-1">Prediction unavailable</div>
+              <div class="text-[10px] opacity-30 mt-1">No prediction</div>
               {% endif %}
             {% endif %}
           </div>
 
-          {# Away team — mirror of home but right-aligned, abbrev on the right #}
-          <div class="flex items-center gap-5 justify-end">
-            <div class="flex flex-col gap-1 items-end">
-              <p class="font-semibold text-sm leading-tight">{{ item.away_team.school }}</p>
-              <p class="text-xs opacity-60">
-                {{ item.away_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.away_team.current_season.losses|floatformat:0|default:"0" }}
-              </p>
-              <p class="text-xs opacity-40 uppercase tracking-wide">Away</p>
+          {# Away team #}
+          <a href="{% url 'opencourt:team-detail' item.away_team.slug %}"
+             class="flex items-center gap-3 justify-end group min-w-0" onclick="event.stopPropagation()">
+            <div class="min-w-0 text-right">
+              <div class="font-bold text-lg leading-tight group-hover:text-primary transition-colors truncate">
+                {{ item.away_team.school }}
+              </div>
+              <div class="flex items-center gap-2 justify-end mt-0.5">
+                <span class="badge badge-ghost badge-xs">A</span>
+                <span class="text-xs opacity-60 font-mono">
+                  {{ item.away_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.away_team.current_season.losses|floatformat:0|default:"0" }}
+                </span>
+              </div>
             </div>
-            <p class="font-bold text-4xl leading-none tracking-tight">{{ item.away_team.abbrv }}</p>
-          </div>
+            {% if item.away_team.primary_color %}
+            <div class="w-2 h-10 rounded-full flex-shrink-0"
+                 style="background-color: {{ item.away_team.primary_color }};"></div>
+            {% endif %}
+          </a>
 
-        </div>{# end matchup grid #}
+        </div>
 
-        {# ── Stats Dropdown ────────────────────────────────────────── #}
-        {# Uses native <details>/<summary> — no JS needed to open/close. #}
-        {# All values are per-game averages, computed in the view.       #}
+        {# ── Stats Comparison ── #}
         <details class="mt-4 border-t border-base-300 pt-3">
-          <summary class="cursor-pointer font-semibold text-primary hover:text-primary-focus text-sm select-none">
-            Show Stats (per game)
+          <summary class="cursor-pointer text-sm font-semibold text-primary select-none flex items-center gap-2">
+            <i class="fa-solid fa-chart-bar text-xs"></i>
+            Season Averages
           </summary>
 
-          <div class="mt-3 overflow-x-auto">
-            <table class="table-auto w-full text-center text-sm">
-              <thead>
-                <tr class="text-xs opacity-50 uppercase tracking-wide">
-                  <th class="pb-2 text-left pl-2">{{ item.home_team.abbrv }}</th>
-                  <th class="pb-2">Stat</th>
-                  <th class="pb-2 text-right pr-2">{{ item.away_team.abbrv }}</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-base-300">
+          <div class="mt-3">
+            {# Visual stat bars #}
+            <div class="space-y-1.5 stat-compare"
+                 data-home-color="{{ item.home_team.primary_color|default:'#6366f1' }}"
+                 data-away-color="{{ item.away_team.primary_color|default:'#ef4444' }}">
 
-                {# Each row: home value | stat label | away value               #}
-                {# Values are already rounded floats or None (shown as —)       #}
-                {# `default:"—"` handles None gracefully in the template        #}
-
-                {% with h=item.home_stats a=item.away_stats %}
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.pts and a.pts and h.pts > a.pts %}text-primary font-semibold{% endif %}">
-                    {{ h.pts|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">PTS</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.pts and a.pts and a.pts > h.pts %}text-primary font-semibold{% endif %}">
-                    {{ a.pts|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.fgp and a.fgp and h.fgp > a.fgp %}text-primary font-semibold{% endif %}">
-                    {{ h.fgp|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">FG%</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.fgp and a.fgp and a.fgp > h.fgp %}text-primary font-semibold{% endif %}">
-                    {{ a.fgp|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.tpp and a.tpp and h.tpp > a.tpp %}text-primary font-semibold{% endif %}">
-                    {{ h.tpp|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">3PT%</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.tpp and a.tpp and a.tpp > h.tpp %}text-primary font-semibold{% endif %}">
-                    {{ a.tpp|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.ftp and a.ftp and h.ftp > a.ftp %}text-primary font-semibold{% endif %}">
-                    {{ h.ftp|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">FT%</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.ftp and a.ftp and a.ftp > h.ftp %}text-primary font-semibold{% endif %}">
-                    {{ a.ftp|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.reb and a.reb and h.reb > a.reb %}text-primary font-semibold{% endif %}">
-                    {{ h.reb|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">REB</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.reb and a.reb and a.reb > h.reb %}text-primary font-semibold{% endif %}">
-                    {{ a.reb|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.oreb and a.oreb and h.oreb > a.oreb %}text-primary font-semibold{% endif %}">
-                    {{ h.oreb|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">OREB</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.oreb and a.oreb and a.oreb > h.oreb %}text-primary font-semibold{% endif %}">
-                    {{ a.oreb|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.ast and a.ast and h.ast > a.ast %}text-primary font-semibold{% endif %}">
-                    {{ h.ast|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">AST</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.ast and a.ast and a.ast > h.ast %}text-primary font-semibold{% endif %}">
-                    {{ a.ast|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.stl and a.stl and h.stl > a.stl %}text-primary font-semibold{% endif %}">
-                    {{ h.stl|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">STL</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.stl and a.stl and a.stl > h.stl %}text-primary font-semibold{% endif %}">
-                    {{ a.stl|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.blk and a.blk and h.blk > a.blk %}text-primary font-semibold{% endif %}">
-                    {{ h.blk|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">BLK</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.blk and a.blk and a.blk > h.blk %}text-primary font-semibold{% endif %}">
-                    {{ a.blk|default:"—" }}
-                  </td>
-                </tr>
-
-                <tr>
-                  {# Turnovers: LOWER is better, so the comparison is flipped #}
-                  <td class="py-1.5 pl-2 text-left
-                    {% if h.tov and a.tov and h.tov < a.tov %}text-primary font-semibold{% endif %}">
-                    {{ h.tov|default:"—" }}
-                  </td>
-                  <td class="py-1.5 text-xs opacity-60">TO</td>
-                  <td class="py-1.5 pr-2 text-right
-                    {% if h.tov and a.tov and a.tov < h.tov %}text-primary font-semibold{% endif %}">
-                    {{ a.tov|default:"—" }}
-                  </td>
-                </tr>
-
-                {% endwith %}
-              </tbody>
-            </table>
-          </div>{# end overflow-x-auto #}
+              {% with h=item.home_stats a=item.away_stats %}
+              <div class="cmp-row" data-home="{{ h.pts|default:'0' }}" data-away="{{ a.pts|default:'0' }}" data-label="PTS" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.fgp|default:'0' }}" data-away="{{ a.fgp|default:'0' }}" data-label="FG%" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.tpp|default:'0' }}" data-away="{{ a.tpp|default:'0' }}" data-label="3PT%" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.ftp|default:'0' }}" data-away="{{ a.ftp|default:'0' }}" data-label="FT%" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.reb|default:'0' }}" data-away="{{ a.reb|default:'0' }}" data-label="REB" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.oreb|default:'0' }}" data-away="{{ a.oreb|default:'0' }}" data-label="OREB" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.ast|default:'0' }}" data-away="{{ a.ast|default:'0' }}" data-label="AST" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.stl|default:'0' }}" data-away="{{ a.stl|default:'0' }}" data-label="STL" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.blk|default:'0' }}" data-away="{{ a.blk|default:'0' }}" data-label="BLK" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.tov|default:'0' }}" data-away="{{ a.tov|default:'0' }}" data-label="TO" data-higher="worse"></div>
+              {% endwith %}
+            </div>
+          </div>
         </details>
 
-      </div>{# end card #}
-
-    {% empty %}
-      <div class="py-16 text-center opacity-50" id="no-games-msg">
-        {% if mode == "results" %}
-          <p class="text-xl font-semibold">No completed games for this date.</p>
-          <p class="text-sm mt-2">Try "Show All" or pick another date above.</p>
-        {% else %}
-          <p class="text-xl font-semibold">No games scheduled for this date.</p>
-          <p class="text-sm mt-2">Try another day using the tabs above, or search for a team.</p>
-        {% endif %}
       </div>
+    </div>
+    {% empty %}
+    <div class="col-span-full text-center py-16" id="no-games-msg">
+      <div class="text-5xl mb-4">
+        {% if mode == "results" %}📋{% else %}📅{% endif %}
+      </div>
+      <p class="text-lg font-semibold opacity-60">
+        {% if mode == "results" %}
+          No completed games for this date.
+        {% else %}
+          No games scheduled for this date.
+        {% endif %}
+      </p>
+      <p class="text-sm opacity-40 mt-2">
+        Try "All" or pick another date above.
+      </p>
+    </div>
     {% endfor %}
+  </div>
 
-  </div>{# end #games-list #}
+  {# ═══════════════════════ SEARCH RESULTS POOL ═══════════════════════ #}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 hidden" id="search-results">
 
-  {# ─── Hidden all-games pool for search ───────────────────────────── #}
-  {# all_games contains every future scheduled game from the view.       #}
-  {# This list is hidden by default and only shown when a search query   #}
-  {# is active. It's always rendered in full so JS can filter it         #}
-  {# client-side without a server round-trip.                            #}
-  <div class="flex flex-col gap-4 hidden" id="search-results">
-
-    {# Shown when search is active but no cards match the query #}
-    <div class="py-16 text-center opacity-50 hidden" id="no-search-msg">
-      <p class="text-xl font-semibold">No upcoming games found for that team.</p>
-      <p class="text-sm mt-2">Try a different name.</p>
+    <div class="col-span-full text-center py-16 hidden" id="no-search-msg">
+      <div class="text-5xl mb-4">🔍</div>
+      <p class="text-lg font-semibold opacity-60">No games found for that team.</p>
+      <p class="text-sm opacity-40 mt-1" id="no-search-text"></p>
     </div>
 
     {% for item in all_games %}
-      <div class="card bg-base-200 shadow-md p-4 search-card"
-           data-teams="{{ item.home_team.school }} {{ item.away_team.school }}"
-           style="display:none">
+    <div class="search-card card bg-base-200 shadow-md overflow-hidden"
+         data-teams="{{ item.home_team.school|lower }} {{ item.away_team.school|lower }} {{ item.home_team.abbrv|lower }} {{ item.away_team.abbrv|lower }}"
+         style="display:none;">
 
-        <div class="flex justify-between text-xs opacity-60 mb-3">
-          <span>{{ item.game.start_date|date:"D, M j · g:i A" }}</span>
-          <span>{{ item.game.venue|default:"TBD" }}</span>
+      <div class="card-body p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2 text-xs opacity-60">
+            <i class="fa-regular fa-clock"></i>
+            <span>{{ item.game.start_date|date:"D, M j · g:i A" }}</span>
+          </div>
+          {% if item.game.venue %}
+          <span class="text-xs opacity-40 hidden sm:inline">{{ item.game.venue }}</span>
+          {% endif %}
         </div>
 
-        <div class="grid grid-cols-3 items-center">
-          <div class="flex items-center gap-5">
-            <p class="font-bold text-4xl leading-none tracking-tight">{{ item.home_team.abbrv }}</p>
-            <div class="flex flex-col gap-1">
-              <p class="font-semibold text-sm leading-tight">{{ item.home_team.school }}</p>
-              <p class="text-xs opacity-60">
-                {{ item.home_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.home_team.current_season.losses|floatformat:0|default:"0" }}
-              </p>
-              <p class="text-xs opacity-40 uppercase tracking-wide">Home</p>
+        <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <a href="{% url 'opencourt:team-detail' item.home_team.slug %}"
+             class="flex items-center gap-3 group min-w-0">
+            {% if item.home_team.primary_color %}
+            <div class="w-2 h-10 rounded-full flex-shrink-0"
+                 style="background-color: {{ item.home_team.primary_color }};"></div>
+            {% endif %}
+            <div class="min-w-0">
+              <div class="font-bold text-lg leading-tight group-hover:text-primary transition-colors truncate">{{ item.home_team.school }}</div>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span class="text-xs opacity-60 font-mono">{{ item.home_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.home_team.current_season.losses|floatformat:0|default:"0" }}</span>
+                <span class="badge badge-ghost badge-xs">H</span>
+              </div>
             </div>
-          </div>
+          </a>
 
-          <div class="text-center">
-            {% if item.actual %}
-              <div class="font-bold text-xl">{{ item.actual.home_points }} – {{ item.actual.away_points }}</div>
-              <div class="text-xs opacity-60 mt-0.5">Final</div>
-              {% if item.prediction %}
-                {% if item.prediction_correct %}
-                  <div class="text-xs font-semibold mt-1 text-success">✓ {{ item.prediction.winner.display_name }}</div>
-                  <div class="text-xs opacity-40">Correct</div>
-                {% else %}
-                  <div class="text-xs font-semibold mt-1 text-error">✗ {{ item.prediction.winner.display_name }}</div>
-                  <div class="text-xs opacity-40">Incorrect</div>
-                {% endif %}
-              {% else %}
-                <div class="text-xs opacity-40 mt-1">No prediction</div>
-              {% endif %}
-            {% else %}
-              <div class="font-bold text-xl">VS</div>
-              {% if item.prediction %}
-                <div class="text-xs font-semibold mt-1">
-                  {{ item.prediction.winner.display_name }}
-                </div>
-                <div class="text-xs opacity-40 mt-0.5">Predicted Winner</div>
-              {% else %}
-                <div class="text-xs opacity-40 mt-1">Prediction unavailable</div>
-              {% endif %}
+          <div class="text-center px-2 min-w-[100px]">
+            <div class="font-bold text-2xl opacity-30">VS</div>
+            {% if item.prediction %}
+            <div class="mt-1.5">
+              <span class="badge badge-primary badge-sm gap-1">
+                <i class="fa-solid fa-trophy text-[8px]"></i>
+                {{ item.prediction.winner.school }}
+              </span>
+            </div>
             {% endif %}
           </div>
 
-          <div class="flex items-center gap-5 justify-end">
-            <div class="flex flex-col gap-1 items-end">
-              <p class="font-semibold text-sm leading-tight">{{ item.away_team.school }}</p>
-              <p class="text-xs opacity-60">
-                {{ item.away_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.away_team.current_season.losses|floatformat:0|default:"0" }}
-              </p>
-              <p class="text-xs opacity-40 uppercase tracking-wide">Away</p>
+          <a href="{% url 'opencourt:team-detail' item.away_team.slug %}"
+             class="flex items-center gap-3 justify-end group min-w-0">
+            <div class="min-w-0 text-right">
+              <div class="font-bold text-lg leading-tight group-hover:text-primary transition-colors truncate">{{ item.away_team.school }}</div>
+              <div class="flex items-center gap-2 justify-end mt-0.5">
+                <span class="badge badge-ghost badge-xs">A</span>
+                <span class="text-xs opacity-60 font-mono">{{ item.away_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.away_team.current_season.losses|floatformat:0|default:"0" }}</span>
+              </div>
             </div>
-            <p class="font-bold text-4xl leading-none tracking-tight">{{ item.away_team.abbrv }}</p>
-          </div>
+            {% if item.away_team.primary_color %}
+            <div class="w-2 h-10 rounded-full flex-shrink-0"
+                 style="background-color: {{ item.away_team.primary_color }};"></div>
+            {% endif %}
+          </a>
         </div>
 
         <details class="mt-4 border-t border-base-300 pt-3">
-          <summary class="cursor-pointer font-semibold text-primary hover:text-primary-focus text-sm select-none">
-            Show Stats (per game)
+          <summary class="cursor-pointer text-sm font-semibold text-primary select-none flex items-center gap-2">
+            <i class="fa-solid fa-chart-bar text-xs"></i> Season Averages
           </summary>
-          <div class="mt-3 overflow-x-auto">
-            <table class="table-auto w-full text-center text-sm">
-              <thead>
-                <tr class="text-xs opacity-50 uppercase tracking-wide">
-                  <th class="pb-2 text-left pl-2">{{ item.home_team.abbrv }}</th>
-                  <th class="pb-2">Stat</th>
-                  <th class="pb-2 text-right pr-2">{{ item.away_team.abbrv }}</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-base-300">
-                {% with h=item.home_stats a=item.away_stats %}
-                <tr><td class="py-1.5 pl-2 text-left {% if h.pts and a.pts and h.pts > a.pts %}text-primary font-semibold{% endif %}">{{ h.pts|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">PTS</td><td class="py-1.5 pr-2 text-right {% if h.pts and a.pts and a.pts > h.pts %}text-primary font-semibold{% endif %}">{{ a.pts|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.fgp and a.fgp and h.fgp > a.fgp %}text-primary font-semibold{% endif %}">{{ h.fgp|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">FG%</td><td class="py-1.5 pr-2 text-right {% if h.fgp and a.fgp and a.fgp > h.fgp %}text-primary font-semibold{% endif %}">{{ a.fgp|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.tpp and a.tpp and h.tpp > a.tpp %}text-primary font-semibold{% endif %}">{{ h.tpp|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">3PT%</td><td class="py-1.5 pr-2 text-right {% if h.tpp and a.tpp and a.tpp > h.tpp %}text-primary font-semibold{% endif %}">{{ a.tpp|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.ftp and a.ftp and h.ftp > a.ftp %}text-primary font-semibold{% endif %}">{{ h.ftp|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">FT%</td><td class="py-1.5 pr-2 text-right {% if h.ftp and a.ftp and a.ftp > h.ftp %}text-primary font-semibold{% endif %}">{{ a.ftp|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.reb and a.reb and h.reb > a.reb %}text-primary font-semibold{% endif %}">{{ h.reb|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">REB</td><td class="py-1.5 pr-2 text-right {% if h.reb and a.reb and a.reb > h.reb %}text-primary font-semibold{% endif %}">{{ a.reb|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.oreb and a.oreb and h.oreb > a.oreb %}text-primary font-semibold{% endif %}">{{ h.oreb|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">OREB</td><td class="py-1.5 pr-2 text-right {% if h.oreb and a.oreb and a.oreb > h.oreb %}text-primary font-semibold{% endif %}">{{ a.oreb|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.ast and a.ast and h.ast > a.ast %}text-primary font-semibold{% endif %}">{{ h.ast|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">AST</td><td class="py-1.5 pr-2 text-right {% if h.ast and a.ast and a.ast > h.ast %}text-primary font-semibold{% endif %}">{{ a.ast|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.stl and a.stl and h.stl > a.stl %}text-primary font-semibold{% endif %}">{{ h.stl|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">STL</td><td class="py-1.5 pr-2 text-right {% if h.stl and a.stl and a.stl > h.stl %}text-primary font-semibold{% endif %}">{{ a.stl|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.blk and a.blk and h.blk > a.blk %}text-primary font-semibold{% endif %}">{{ h.blk|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">BLK</td><td class="py-1.5 pr-2 text-right {% if h.blk and a.blk and a.blk > h.blk %}text-primary font-semibold{% endif %}">{{ a.blk|default:"—" }}</td></tr>
-                <tr><td class="py-1.5 pl-2 text-left {% if h.tov and a.tov and h.tov < a.tov %}text-primary font-semibold{% endif %}">{{ h.tov|default:"—" }}</td><td class="py-1.5 text-xs opacity-60">TO</td><td class="py-1.5 pr-2 text-right {% if h.tov and a.tov and a.tov < h.tov %}text-primary font-semibold{% endif %}">{{ a.tov|default:"—" }}</td></tr>
-                {% endwith %}
-              </tbody>
-            </table>
+          <div class="mt-3">
+            <div class="space-y-1.5 stat-compare"
+                 data-home-color="{{ item.home_team.primary_color|default:'#6366f1' }}"
+                 data-away-color="{{ item.away_team.primary_color|default:'#ef4444' }}">
+              {% with h=item.home_stats a=item.away_stats %}
+              <div class="cmp-row" data-home="{{ h.pts|default:'0' }}" data-away="{{ a.pts|default:'0' }}" data-label="PTS" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.fgp|default:'0' }}" data-away="{{ a.fgp|default:'0' }}" data-label="FG%" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.tpp|default:'0' }}" data-away="{{ a.tpp|default:'0' }}" data-label="3PT%" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.ftp|default:'0' }}" data-away="{{ a.ftp|default:'0' }}" data-label="FT%" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.reb|default:'0' }}" data-away="{{ a.reb|default:'0' }}" data-label="REB" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.ast|default:'0' }}" data-away="{{ a.ast|default:'0' }}" data-label="AST" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.stl|default:'0' }}" data-away="{{ a.stl|default:'0' }}" data-label="STL" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.blk|default:'0' }}" data-away="{{ a.blk|default:'0' }}" data-label="BLK" data-higher="better"></div>
+              <div class="cmp-row" data-home="{{ h.tov|default:'0' }}" data-away="{{ a.tov|default:'0' }}" data-label="TO" data-higher="worse"></div>
+              {% endwith %}
+            </div>
           </div>
         </details>
-
       </div>
+    </div>
     {% endfor %}
+  </div>
 
-  </div>{# end #search-results #}
+</div>
 
-</div>{# end container #}
-
-{# ─── Search JS ───────────────────────────────────────────────────────── #}
-{#                                                                          #}
-{# handleSearch() is called on every keystroke.                            #}
-{#                                                                          #}
-{# When query is EMPTY:                                                     #}
-{#   - Show #games-list (date-filtered view, controlled by tab)            #}
-{#   - Hide #search-results                                                #}
-{#                                                                          #}
-{# When query is NON-EMPTY:                                                 #}
-{#   - Hide #games-list entirely                                           #}
-{#   - Show #search-results, revealing only cards whose data-teams         #}
-{#     contains the query string. All other cards stay display:none.       #}
-{#   - Show #no-search-msg if zero cards matched.                          #}
-{#                                                                          #}
-{# data-teams on every .search-card contains both full school names so     #}
-{# partial matches like "duke" or "carolina" work naturally.               #}
+{# ═══════════════════════ JAVASCRIPT ═══════════════════════ #}
 <script>
-  const gamesList    = document.getElementById('games-list');
-  const searchPanel  = document.getElementById('search-results');
-  const noSearchMsg  = document.getElementById('no-search-msg');
-  const searchCards  = document.querySelectorAll('.search-card');
+(function() {
 
-  function handleSearch(raw) {
-    const q = raw.trim().toLowerCase();
+  var searchInput  = document.getElementById('team-search');
+  var gamesList    = document.getElementById('games-list');
+  var searchPanel  = document.getElementById('search-results');
+  var noSearchMsg  = document.getElementById('no-search-msg');
+  var noSearchText = document.getElementById('no-search-text');
+  var searchCards  = document.querySelectorAll('.search-card');
+  var gameCards    = document.querySelectorAll('#games-list.game-card');
+  var currentMode  = '{{ mode }}';
+
+  // ─── SEARCH ───
+  searchInput.addEventListener('input', function() {
+    var q = searchInput.value.trim().toLowerCase();
 
     if (!q) {
-      // Empty query — restore the date-tab view
-      gamesList.classList.remove('hidden');
-      searchPanel.classList.add('hidden');
-      noSearchMsg.classList.add('hidden');
-      searchCards.forEach(c => c.style.display = 'none');
+      // Reset to date-filtered view
+      gamesList.style.display = '';
+      searchPanel.style.display = 'none';
+      noSearchMsg.style.display = 'none';
+
+      gameCards.forEach(function(c) { c.style.display = ''; });
+      searchCards.forEach(function(c) { c.style.display = 'none'; });
       return;
     }
 
-    // Non-empty query — switch to the all-games search panel
-    gamesList.classList.add('hidden');
-    searchPanel.classList.remove('hidden');
+    if (currentMode === 'results') {
+      // Filter within the date-filtered list
+      searchPanel.style.display = 'none';
+      gamesList.style.display = '';
 
-    let matchCount = 0;
-    searchCards.forEach(card => {
-      const teams = card.dataset.teams.toLowerCase();
-      const matches = teams.includes(q);
-      card.style.display = matches ? '' : 'none';
-      if (matches) matchCount++;
+      var count = 0;
+      gameCards.forEach(function(card) {
+        var teams = (card.getAttribute('data-teams') || '').toLowerCase();
+        var match = teams.indexOf(q) !== -1;
+        card.style.display = match ? '' : 'none';
+        if (match) count++;
+      });
+
+      noSearchMsg.style.display = count === 0 ? '' : 'none';
+      if (count === 0 && noSearchMsg.parentNode !== gamesList) {
+        // Move no-search message into games list for results mode
+      }
+
+    } else {
+      // Search across all future games
+      gamesList.style.display = 'none';
+      searchPanel.style.display = '';
+
+      var count = 0;
+      searchCards.forEach(function(card) {
+        var teams = (card.getAttribute('data-teams') || '').toLowerCase();
+        var match = teams.indexOf(q) !== -1;
+        card.style.display = match ? '' : 'none';
+        if (match) count++;
+      });
+
+      noSearchMsg.style.display = count === 0 ? '' : 'none';
+      if (count === 0) {
+        noSearchText.textContent = 'No upcoming games for "' + searchInput.value + '"';
+      }
+    }
+  });
+
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      searchInput.dispatchEvent(new Event('input'));
+    }
+  });
+
+  // ─── STAT COMPARISON BAR RENDERER ───
+  function ensureHash(color) {
+    if (!color) return null;
+    return color.startsWith('#') ? color : '#' + color;
+  }
+
+  function renderStatBars(container) {
+    if (container.getAttribute('data-rendered') === 'true') return;
+
+    var homeColor = ensureHash(container.getAttribute('data-home-color')) || '#6366f1';
+    var awayColor = ensureHash(container.getAttribute('data-away-color')) || '#ef4444';
+    var rows = container.querySelectorAll('.cmp-row');
+
+    rows.forEach(function(el) {
+      var homeVal = parseFloat(el.getAttribute('data-home')) || 0;
+      var awayVal = parseFloat(el.getAttribute('data-away')) || 0;
+      var label   = el.getAttribute('data-label') || '';
+      var higher  = el.getAttribute('data-higher') || 'better';
+      var isPct   = label.indexOf('%') !== -1;
+
+      var maxVal  = isPct ? 100 : Math.max(homeVal, awayVal, 1);
+      var homePct = Math.min((homeVal / maxVal) * 100, 100);
+      var awayPct = Math.min((awayVal / maxVal) * 100, 100);
+
+      // Determine winner
+      var homeWins, awayWins;
+      if (higher === 'worse') {
+        homeWins = homeVal < awayVal;
+        awayWins = awayVal < homeVal;
+      } else {
+        homeWins = homeVal > awayVal;
+        awayWins = awayVal > homeVal;
+      }
+
+      var homeDisplay = isPct ? homeVal.toFixed(1) + '%' : String(homeVal);
+      var awayDisplay = isPct ? awayVal.toFixed(1) + '%' : String(awayVal);
+
+      el.className = 'grid grid-cols-[1fr_44px_1fr] gap-x-3 items-center px-1 py-0.5';
+      el.innerHTML =
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<span class="text-xs font-mono ' + (homeWins ? 'font-bold' : 'opacity-50') + '" style="width:48px;text-align:right;flex-shrink:0;">' + homeDisplay + '</span>' +
+          '<div style="position:relative;height:16px;border-radius:3px;flex:1 1 0%;min-width:0;overflow:hidden;background:rgba(128,128,128,0.08);">' +
+            '<div style="position:absolute;top:0;right:0;height:100%;border-radius:3px;width:' + homePct + '%;background:' + homeColor + ';opacity:' + (homeWins ? '0.9' : '0.25') + ';transition:width 0.4s ease;"></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="text-center text-[10px] font-semibold uppercase tracking-wider opacity-40">' + label + '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<div style="position:relative;height:16px;border-radius:3px;flex:1 1 0%;min-width:0;overflow:hidden;background:rgba(128,128,128,0.08);">' +
+            '<div style="position:absolute;top:0;left:0;height:100%;border-radius:3px;width:' + awayPct + '%;background:' + awayColor + ';opacity:' + (awayWins ? '0.9' : '0.25') + ';transition:width 0.4s ease;"></div>' +
+          '</div>' +
+          '<span class="text-xs font-mono ' + (awayWins ? 'font-bold' : 'opacity-50') + '" style="width:48px;text-align:left;flex-shrink:0;">' + awayDisplay + '</span>' +
+        '</div>';
     });
 
-    // Show "no results" message only when nothing matched
-    noSearchMsg.classList.toggle('hidden', matchCount > 0);
+    container.setAttribute('data-rendered', 'true');
   }
-</script>
 
+  // ─── LAZY RENDER STAT BARS ON DETAILS OPEN ───
+  document.addEventListener('toggle', function(e) {
+    if (e.target.tagName === 'DETAILS' && e.target.open) {
+      var container = e.target.querySelector('.stat-compare');
+      if (container) renderStatBars(container);
+    }
+  }, true);
+
+})();
+</script>
 {% endblock %}
