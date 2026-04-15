@@ -32,7 +32,7 @@ from django.db.models import (
   Count,
   ExpressionWrapper,
   F,
-  FloatField, 
+  FloatField,
   OuterRef,
   Prefetch,
   Q,
@@ -46,7 +46,6 @@ from django.views.generic import ListView, TemplateView
 
 from opencourt.models import Conference, Game, GameTeamStats, Ranking, Team, TeamSeasonStats
 from opencourt.predictions.predict import make_predictions as predict_game
-
 
 class HomeView(TemplateView):
     template_name = 'opencourt/home.html'
@@ -83,7 +82,6 @@ class HomeView(TemplateView):
         context['total_games'] = Game.objects.count()
 
         return context
-
 
 class AboutView(TemplateView):
     """Static about/info page. No model data needed."""
@@ -165,6 +163,7 @@ class ConferenceListView(ListView):
         total_wins=Sum('teams__season_stats__wins', filter=Q(teams__season_stats__season=current_year), distinct=True),
         total_losses=Sum('teams__season_stats__losses', filter=Q(teams__season_stats__season=current_year), distinct=True),
       ).all()
+
 class RankingsListView(TemplateView):
     """
     Renders dual-poll rankings page (AP Top 25 + Coaches Poll side by side)
@@ -266,6 +265,7 @@ class RankingsListView(TemplateView):
         context['selected_week'] = selected_week
         context['conference_list'] = Conference.objects.order_by('abbrv')
         return context
+
 class TeamDetailView(TemplateView):
     """
     Detail page for a single team, showing historical stats, ApexCharts
@@ -432,6 +432,7 @@ class TeamDetailView(TemplateView):
         context['off_pts'] = json.dumps(off_pts)
         context['opp_pts'] = json.dumps(opp_pts)
         return context
+
 class UpcomingView(TemplateView):
     """
     Upcoming games page with head-to-head stat comparison.
