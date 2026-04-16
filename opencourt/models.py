@@ -125,6 +125,48 @@ class Team(models.Model):
       return self._current_stats[0] if self._current_stats else None
     return self.season_stats.order_by('-season').first()
 
+  @property
+  def current_conference_record(self):
+    """
+    Get the conference record for the current season.
+    Returns {'wins': int, 'losses': int, 'record_str': str} or None if no current season.
+    """
+    if not self.current_season:
+      return None
+    return self.get_conference_record(self.current_season.season)
+
+  def get_conference_record(self, season):
+    """
+    Calculate this team's conference record for a given season.
+    
+    Returns a dict with 'wins', 'losses', and 'record_str' keys.
+    Queries Game model where conference_game=True and filters by season.
+    """
+    from django.db.models import Q
+    
+    conf_wins = Game.objects.filter(
+      season=season,
+      conference_game=True
+    ).filter(
+      (Q(home_team=self) & Q(home_winner=True)) |
+      (Q(away_team=self) & Q(away_winner=True))
+    ).count()
+    
+    conf_losses = Game.objects.filter(
+      season=season,
+      conference_game=True
+    ).filter(
+      (Q(home_team=self) & Q(home_winner=False)) |
+      (Q(away_team=self) & Q(away_winner=False))
+    ).count()
+    
+    return {
+      'wins': conf_wins,
+      'losses': conf_losses,
+      'record_str': f"{conf_wins}-{conf_losses}"
+    }
+
+
   def save(self, *args, **kwargs):
     """
     Auto-generate a URL-safe slug on first save if one isn't set.

@@ -174,46 +174,4 @@
       </div>
     </div>
   </div>
-
-  {# ═══════════════════════ TEAM CARDS GRID ═══════════════════════ #}
-  <div>
-    <h3 class="text-lg font-bold mb-3">
-      <i class="fa-solid fa-users text-secondary"></i>
-      Teams
-    </h3>
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-      {% for team in conference.teams.all %}
-      <a href="{% url 'opencourt:team-detail' team.slug %}"
-         class="card shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1 group overflow-hidden">
-        {# Team color accent #}
-        <div class="h-1.5 w-full"
-             style="background-color: {{ team.primary_color|default:'#6366f1' }};"></div>
-        <div class="card-body p-3">
-          <div class="font-bold text-sm group-hover:text-primary transition-colors truncate">
-            {{ team.school }}
-          </div>
-          {% if team.mascot %}
-          <div class="text-xs opacity-40 truncate">{{ team.mascot }}</div>
-          {% endif %}
-          {% if team.current_season %}
-          <div class="flex items-center justify-between mt-2">
-            <span class="font-mono text-sm font-bold">
-              {{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}
-            </span>
-            {% if team.current_season.win_pct is not None %}
-            <span class="badge badge-xs
-              {% if team.current_season.win_pct >= 75 %}badge-success
-              {% elif team.current_season.win_pct >= 50 %}badge-warning
-              {% else %}badge-error{% endif %}">
-              {{ team.current_season.win_pct|floatformat:0 }}%
-            </span>
-            {% endif %}
-          </div>
-          {% endif %}
-        </div>
-      </a>
-      {% endfor %}
-    </div>
-  </div>
-
 </div>

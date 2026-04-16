@@ -75,7 +75,7 @@
 
   {# ═══════════════════════ CARD GRID VIEW ═══════════════════════ #}
   <div id="grid-view">
-    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" id="team-grid">
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4" id="team-grid">
       {% for team in team_list %}
       <a href="{% url 'opencourt:team-detail' team.slug %}"
          class="team-card card bg-base-200 shadow-md hover:shadow-xl transition-all duration-200 hover:-translate-y-1 group"
@@ -89,75 +89,33 @@
          data-defrtg="{{ team.current_season.opp_rating|default:'999' }}">
 
         <div class="card-body p-4">
-          <div class="h-1 w-full rounded-full mb-3 opacity-80"
-               style="background: linear-gradient(90deg,
-                 {{ team.primary_color|default:'#6366f1' }},
-                 {{ team.secondary_color|default:team.primary_color|default:'#6366f1' }});"></div>
-
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <h3 class="font-bold text-sm leading-tight group-hover:text-primary transition-colors truncate">
+          <div class="flex items-center gap-3">
+            <img
+              src="https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/{{ team.source_id|default:team.id }}.png"
+              alt="{{ team.school }} logo"
+              class="w-8 h-8 rounded object-contain bg-white/20 p-1 flex-shrink-0"
+              onerror="this.style.display='none'"
+            />
+            <div class="min-w-0 flex-1">
+              <h3 class="font-bold text-sm leading-tight truncate">
                 {{ team.school }}
               </h3>
-              {% if team.mascot %}
-              <p class="text-xs opacity-50 truncate">{{ team.mascot }}</p>
+              {% if team.current_season %}
+              <span class="font-mono text-xs">
+                {{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}
+              </span>
+              {% else %}
+              <span class="font-mono text-xs opacity-50">
+                0-0
+              </span>
               {% endif %}
             </div>
             {% if team.conference %}
-            <span class="badge badge-neutral badge-xs flex-shrink-0 mt-0.5">
+            <span class="badge badge-neutral badge-xs flex-shrink-0">
               {{ team.conference.abbrv }}
             </span>
             {% endif %}
           </div>
-
-          {% if team.current_season %}
-          <div class="mt-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="font-mono text-lg font-bold">
-                {{ team.current_season.wins|floatformat:0 }}-{{ team.current_season.losses|floatformat:0 }}
-              </span>
-              {% if team.current_season.win_pct is not None %}
-              <span class="badge badge-sm
-                {% if team.current_season.win_pct >= 75 %}badge-success
-                {% elif team.current_season.win_pct >= 50 %}badge-warning
-                {% else %}badge-error{% endif %}">
-                {{ team.current_season.win_pct|floatformat:1 }}%
-              </span>
-              {% endif %}
-            </div>
-
-            {% if team.current_season.off_rating and team.current_season.opp_rating %}
-            <div class="grid grid-cols-3 gap-1 text-center">
-              <div class="bg-base-300 rounded px-1 py-1.5">
-                <div class="text-[10px] uppercase tracking-wider opacity-50">Off</div>
-                <div class="font-mono text-xs font-semibold
-                  {% if team.current_season.off_rating >= 110 %}text-success{% endif %}">
-                  {{ team.current_season.off_rating|floatformat:1 }}
-                </div>
-              </div>
-              <div class="bg-base-300 rounded px-1 py-1.5">
-                <div class="text-[10px] uppercase tracking-wider opacity-50">Def</div>
-                <div class="font-mono text-xs font-semibold
-                  {% if team.current_season.opp_rating <= 95 %}text-success{% endif %}">
-                  {{ team.current_season.opp_rating|floatformat:1 }}
-                </div>
-              </div>
-              <div class="bg-base-300 rounded px-1 py-1.5">
-                <div class="text-[10px] uppercase tracking-wider opacity-50">Net</div>
-                <div class="font-mono text-xs font-bold
-                  {% if team.current_season.off_rating > team.current_season.opp_rating %}text-success
-                  {% else %}text-error{% endif %}">
-                  {% if team.current_season.off_rating > team.current_season.opp_rating %}+{% endif %}{{ team.current_season.point_margin|floatformat:1 }}
-                </div>
-              </div>
-            </div>
-            {% endif %}
-          </div>
-          {% else %}
-          <div class="mt-3 text-center py-3">
-            <span class="text-xs opacity-40">No stats available</span>
-          </div>
-          {% endif %}
         </div>
       </a>
       {% empty %}
