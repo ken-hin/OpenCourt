@@ -111,8 +111,8 @@
                   {# Rank #}
                   <td class="text-center">
                     <span class="font-bold text-lg
-                      {% if entry.ranking <= 5 %}text-primary
-                      {% elif entry.ranking <= 10 %}text-secondary
+                      {% if entry.ranking <= 3 %}text-success
+                      {% else %}text-gray-500
                       {% endif %}">
                       {{ entry.ranking }}
                     </span>
@@ -215,8 +215,8 @@
 
                   <td class="text-center">
                     <span class="font-bold text-lg
-                      {% if entry.ranking <= 5 %}text-secondary
-                      {% elif entry.ranking <= 10 %}text-accent
+                      {% if entry.ranking <= 3 %}text-success
+                      {% else %}text-gray-500
                       {% endif %}">
                       {{ entry.ranking }}
                     </span>
@@ -280,18 +280,6 @@
     <p class="text-lg opacity-60 font-semibold">No ranked teams match your filters</p>
     <p class="text-sm opacity-40 mt-1" id="no-results-text"></p>
     <button class="btn btn-ghost btn-sm mt-3" id="clear-filters">Clear Filters</button>
-  </div>
-
-  {# ═══════════════════════ LEGEND ═══════════════════════ #}
-  <div class="flex flex-wrap gap-4 justify-center mt-8 text-xs opacity-50">
-    <span class="flex items-center gap-1">
-      <span class="text-success font-bold">+12.5</span> Positive point margin
-    </span>
-    <span class="flex items-center gap-1">
-      <span class="text-error font-bold">−3.2</span> Negative point margin
-    </span>
-    <span>Pts = Poll voting points received</span>
-    <span>Click any team to view full profile</span>
   </div>
 
 </div>

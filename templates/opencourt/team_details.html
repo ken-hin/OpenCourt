@@ -18,9 +18,13 @@
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         {# Team identity #}
         <div>
-          <div class="flex items-center gap-3">
-            <div class="w-4 h-12 rounded-full flex-shrink-0"
-                 style="background-color: {{ team.primary_color|default:'#6366f1' }};"></div>
+          <div class="flex items-center gap-4">
+            <img
+              src="https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/{{ team.source_id|default:team.id }}.png"
+              alt="{{ team.school }} logo"
+              class="w-16 h-16 rounded-lg object-contain bg-white p-2 shadow-md flex-shrink-0"
+              onerror="this.style.display='none'"
+            />
             <div>
               <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">{{ team.school }}</h1>
               {% if team.mascot %}
@@ -469,7 +473,6 @@
         <i class="fa-solid fa-chart-line text-primary mr-2"></i>
         Historical Trends
       </h2>
-      <span class="text-xs opacity-40">{{ stat_years|safe }} seasons of data</span>
     </div>
 
     {# Top row: PPG line + Four Factors radial #}
@@ -481,7 +484,7 @@
       </div>
       <div class="card bg-base-200 shadow-md">
         <div class="card-body p-4">
-          <div id="radialBarBottom" class="min-h-[300px]"></div>
+          <div id="" class="min-h-[300px]">UNDER CONSTRUCTION</div>
         </div>
       </div>
     </div>
@@ -523,8 +526,7 @@
     var losses   = {{ losses|safe }};
 
     // Team color for chart accents
-    var teamColor = '{{ team.primary_color|default:"#6366f1" }}';
-    if (teamColor && !teamColor.startsWith('#')) teamColor = '#' + teamColor;
+    var teamColor = '#10b981';
 
     // ─── ApexCharts global defaults ───
     window.Apex = {
@@ -559,31 +561,8 @@
       colors: [teamColor, '#ef4444'],
     }).render();
 
-    // ─── Radial Bar: Four Factors Snapshot ───
-    var chart_effFg    = effFg.filter(Boolean).at(-1)    || 0;
-    var chart_to_ratio = TO_ratio.filter(Boolean).at(-1) || 0;
-    var chart_oreb_pct = oreb_pct.filter(Boolean).at(-1) || 0;
-    var chart_ft_rate  = ft_rate.filter(Boolean).at(-1)  || 0;
+    // ─── NEED TO ADD A NEW CHART HERE ───
 
-    new ApexCharts(document.querySelector('#radialBarBottom'), {
-      chart: { type: 'radialBar', height: 350 },
-      series: [chart_effFg, chart_to_ratio, chart_oreb_pct, chart_ft_rate],
-      labels: ['eFG%', 'TOV%', 'OR%', 'FTRate'],
-      plotOptions: {
-        radialBar: {
-          hollow: { size: '40%' },
-          track: { show: true, background: 'rgba(255,255,255,0.05)' },
-          startAngle: -180,
-          endAngle: 180,
-          dataLabels: {
-            name: { fontSize: '14px', color: '#9ca3af' },
-            value: { fontSize: '16px', color: '#d1d5db' },
-          },
-        },
-      },
-      title: { text: 'Four Factors (Current)', align: 'left', style: { color: '#d1d5db' } },
-      colors: [teamColor, '#f59e0b', '#10b981', '#3b82f6'],
-    }).render();
 
     // ─── Bar: Wins & Losses ───
     new ApexCharts(document.querySelector('#barchart'), {
