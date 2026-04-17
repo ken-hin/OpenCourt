@@ -10,9 +10,12 @@ __pycache__/
 *.pyo
 
 # Egg/packaging artifacts from pip
+# Note: `dist/` and `build/` are anchored with a leading slash so they only
+# match top-level directories. An unanchored `dist/` would also match
+# theme/static/css/dist/ (the compiled Tailwind output), which must be committed.
 *.egg-info/
-dist/
-build/
+/dist/
+/build/
 
 
 # --- Virtual Environment ---
