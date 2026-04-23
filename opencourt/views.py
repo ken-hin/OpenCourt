@@ -409,13 +409,22 @@ class TeamDetailView(TemplateView):
         off_pts = [round(s.off_points / s.games, 1) if s.off_points and s.games else None for s in season_stats]
         opp_pts = [round(s.opp_points / s.games, 1) if s.opp_points and s.games else None for s in season_stats]
 
-        # --- Pack context ---
-        # The template references these keys directly in {{ var|safe }} tags
-        # inside ApexCharts config objects. Key names are kept short for
-        # readability in the template JS.
         context['team'] = team
         context['season_stats'] = season_stats
         context['stat_years'] = json.dumps(season_labels)
+
+        # Calculate per-game averages for current season display
+        current_stats = team.current_season
+        if current_stats and current_stats.games:
+            context['current_ppg'] = round(current_stats.off_points / current_stats.games, 1) if current_stats.off_points else None
+            context['current_rpg'] = round(current_stats.off_reb_total / current_stats.games, 1) if current_stats.off_reb_total else None
+            context['current_apg'] = round(current_stats.off_assists / current_stats.games, 1) if current_stats.off_assists else None
+            context['current_topg'] = round(current_stats.off_turnovers / current_stats.games, 1) if current_stats.off_turnovers else None
+            context['current_spg'] = round(current_stats.off_steals / current_stats.games, 1) if current_stats.off_steals else None
+            context['current_bpg'] = round(current_stats.off_blocks / current_stats.games, 1) if current_stats.off_blocks else None
+            context['current_opp_ppg'] = round(current_stats.opp_points / current_stats.games, 1) if current_stats.opp_points else None
+            context['current_margin'] = round((current_stats.off_points - current_stats.opp_points) / current_stats.games, 1) if current_stats.off_points and current_stats.opp_points else None
+            context['current_to_ratio'] = round(current_stats.off_turnover_ratio * 100, 1) if current_stats.off_turnover_ratio else None
 
         context['wins'] = json.dumps(wins)
         context['losses'] = json.dumps(losses)
