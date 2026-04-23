@@ -58,12 +58,12 @@
       <a href="{% url 'opencourt:teams' %}" class="hover:text-primary">Teams</a>
       <a href="{% url 'opencourt:rankings' %}" class="hover:text-primary">Rankings</a>
       <a href="{% url 'opencourt:conferences' %}" class="hover:text-primary">Conferences</a>
-      <a href="{% url 'opencourt:upcoming' %}" class="hover:text-primary">Upcoming Games</a>
+      <a href="{% url 'opencourt:upcoming' %}" class="hover:text-primary">Predictions</a>
       <a href="{% url 'opencourt:about' %}" class="hover:text-primary">About</a>
     </div>
   </nav>
   <!-- Main content -->
-  <main>
+  <main class="pt-20 mx-10">
     {% block content %}{% endblock %}
   </main>
 

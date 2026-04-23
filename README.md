@@ -1,5 +1,7 @@
 # OpenCourt
 
+# Live Page URL: https://cs340-opencourt.up.railway.app/
+
 A free, open-source college basketball (CBB) stats and analytics dashboard. OpenCourt pulls data from the [CBBData API](https://cbbdata.com), presents it through interactive visualizations, and uses an XGBoost prediction model to forecast game outcomes.
 
 **Tech Stack:** Python 3.14 · Django 6 · Tailwind CSS v4 · DaisyUI v5 · ApexCharts · XGBoost · SQLite (dev) / PostgreSQL (prod) · Railway · Supabase
@@ -569,7 +571,7 @@ git commit -m "short description of what you did"
 # 4. Push your branch to GitHub
 git push -u origin feature/your-feature-name
 
-# 5. Open a Pull Request on GitHub — message Kenneth to review before merging
+# 5. Open a Pull Request on GitHub — message Kenneth to review before merging 
 ```
 
 ### Rules

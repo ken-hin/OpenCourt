@@ -1,116 +1,408 @@
 {% extends 'base.html' %}
 {% load static %}
+
 {% block title %}Rankings — OpenCourt{% endblock %}
 
 {% block content %}
-<!-- Week selector -->
-{% if available_weeks %}
-<div class="flex items-center gap-3 mx-15 mb-4 my-20">
-  <label class="text-sm font-semibold text-gray-400"></label>
-  <select class="select select-sm select-bordered w-48" onchange="window.location.search = '?week=' + this.value">
-    {% for w in available_weeks %}
-    <option value="{{ w.week }}" {% if w.week == selected_week %}selected{% endif %}>
-      Week {{ w.week }}
-    </option>
-    {% endfor %}
-  </select>
-</div>
-{% endif %}
+<div class="container mx-auto px-4 py-8 max-w-7xl">
 
-<!-- ── Dual-poll rankings: AP Top 25 (left) + Coaches Poll (right) ──────── -->
-<div class="flex gap-6 mx-15 my-4">
+  {# ═══════════════════════ HEADER ═══════════════════════ #}
+  <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-3xl font-bold tracking-tight">🏆 Rankings</h1>
+      <p class="text-sm opacity-60 mt-1">
+        AP Top 25 &amp; Coaches Poll — side by side
+        {% if ap_poll_date %}
+          · Updated {{ ap_poll_date|date:"M d, Y" }}
+        {% endif %}
+      </p>
+    </div>
 
-  <!-- AP Top 25 -->
-  <div class="w-1/2" style="height: 70vh;">
-    <h2 class="text-2xl font-bold mb-1">AP Top 25</h2>
-    {% if ap_poll_date %}
-      <p class="text-xs text-gray-500 mb-3">{{ ap_poll_date|date:"M d, Y" }}</p>
-    {% endif %}
-    <div class="overflow-y-auto overflow-x-auto rounded-lg" style="height: calc(70vh - 56px);">
-      <table class="w-full border-collapse rankings-table" data-poll="ap">
-        <thead class="sticky top-0 z-10 bg-base-100">
-          <tr class="font-bold text-sm border-b opacity-80">
-            <th class="text-left px-4 py-2 w-12">#</th>
-            <th class="text-left px-4 py-2">Team</th>
-            <th class="text-left px-4 py-2">Conf</th>
-            <th class="text-right px-4 py-2">Record</th>
-            <th class="text-right px-4 py-2">+/-</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for entry in ap_rankings %}
-          <tr
-            id="{{ entry.team.conference.slug }}"
-            class="team-card border-b border-white/5 hover:bg-white/5 transition-all duration-200 cursor-pointer"
-            onclick="window.location='{% url 'opencourt:team-detail' entry.team.slug %}'"
-          >
-            <td class="px-4 py-3 font-bold text-lg w-12">{{ entry.ranking }}</td>
-            <td class="px-4 py-3 font-semibold">{{ entry.team.display_name }}</td>
-            <td class="px-4 py-3 text-sm opacity-70">{{ entry.team.conference.abbrv }}</td>
-            <td class="px-4 py-3 text-right font-medium">
-              {% if entry.latest_wins is not None %}
-                {{ entry.latest_wins|floatformat:0 }}-{{ entry.latest_losses|floatformat:0 }}
-              {% else %}—{% endif %}
-            </td>
-            <td class="px-4 py-3 text-right font-medium">
-              {% if entry.latest_point_margin is not None %}
-                {{ entry.latest_point_margin|floatformat:1 }}
-              {% else %}—{% endif %}
-            </td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="5" class="px-4 py-6 text-gray-500 text-center">No AP rankings available.</td></tr>
+    <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+      {# --- Week Selector --- #}
+      {% if available_weeks %}
+      <select id="week-select"
+              class="select select-bordered select-sm w-full sm:w-48"
+              onchange="window.location.search='?week='+this.value">
+        {% for w in available_weeks %}
+        <option value="{{ w.week }}" {% if w.week == selected_week %}selected{% endif %}>
+          Week {{ w.week }} — {{ w.poll_date|date:"M d" }}
+        </option>
+        {% endfor %}
+      </select>
+      {% endif %}
+
+      {# --- Conference Filter --- #}
+      <div class="dropdown dropdown-end">
+        <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-1">
+          <i class="fa-solid fa-filter"></i>
+          <span id="conf-label">All Conferences</span>
+        </div>
+        <ul tabindex="0" class="dropdown-content menu bg-base-300 rounded-box z-20 w-56 p-2 shadow-lg max-h-72 overflow-y-auto">
+          <li><a href="#" class="conf-option active" data-conf="all">All Conferences</a></li>
+          {% for conf in conference_list %}
+          <li><a href="#" class="conf-option" data-conf="{{ conf.slug }}">{{ conf.short_name }}</a></li>
           {% endfor %}
-        </tbody>
-      </table>
+        </ul>
+      </div>
+
+      {# --- Search --- #}
+      <div class="join">
+        <input type="search" id="rank-search" placeholder="Search teams..."
+               class="input input-bordered join-item input-sm w-full sm:w-44" autocomplete="off" />
+        <span class="btn btn-neutral join-item btn-sm">
+          <i class="fa-solid fa-magnifying-glass"></i>
+        </span>
+      </div>
     </div>
   </div>
 
-  <!-- Coaches Poll -->
-  <div class="w-1/2" style="height: 70vh;">
-    <h2 class="text-2xl font-bold mb-1">Coaches Poll</h2>
-    {% if coaches_poll_date %}
-      <p class="text-xs text-gray-500 mb-3">{{ coaches_poll_date|date:"M d, Y" }}</p>
-    {% endif %}
-    <div class="overflow-y-auto overflow-x-auto rounded-lg" style="height: calc(70vh - 56px);">
-      <table class="w-full border-collapse rankings-table" data-poll="coaches">
-        <thead class="sticky top-0 z-10 bg-base-100">
-          <tr class="font-bold text-sm border-b opacity-80">
-            <th class="text-left px-4 py-2 w-12">#</th>
-            <th class="text-left px-4 py-2">Team</th>
-            <th class="text-left px-4 py-2">Conf</th>
-            <th class="text-right px-4 py-2">Record</th>
-            <th class="text-right px-4 py-2">+/-</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for entry in coaches_rankings %}
-          <tr
-            id="{{ entry.team.conference.slug }}"
-            class="team-card border-b border-white/5 hover:bg-white/5 transition-all duration-200 cursor-pointer"
-            onclick="window.location='{% url 'opencourt:team-detail' entry.team.slug %}'"
-          >
-            <td class="px-4 py-3 font-bold text-lg w-12">{{ entry.ranking }}</td>
-            <td class="px-4 py-3 font-semibold">{{ entry.team.display_name }}</td>
-            <td class="px-4 py-3 text-sm opacity-70">{{ entry.team.conference.abbrv }}</td>
-            <td class="px-4 py-3 text-right font-medium">
-              {% if entry.latest_wins is not None %}
-                {{ entry.latest_wins|floatformat:0 }}-{{ entry.latest_losses|floatformat:0 }}
-              {% else %}—{% endif %}
-            </td>
-            <td class="px-4 py-3 text-right font-medium">
-              {% if entry.latest_point_margin is not None %}
-                {{ entry.latest_point_margin|floatformat:1 }}
-              {% else %}—{% endif %}
-            </td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="5" class="px-4 py-6 text-gray-500 text-center">No Coaches Poll rankings are available.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  {# ═══════════════════════ POLL COMPARISON TOGGLE (Mobile) ═══════════════════════ #}
+  <div class="flex md:hidden mb-4">
+    <div class="join w-full">
+      <button class="btn btn-sm join-item btn-primary flex-1 poll-toggle" data-poll="ap">AP Top 25</button>
+      <button class="btn btn-sm join-item btn-ghost flex-1 poll-toggle" data-poll="coaches">Coaches Poll</button>
     </div>
   </div>
 
+  {# ═══════════════════════ DUAL POLL LAYOUT ═══════════════════════ #}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+    {# ─────────────────── AP TOP 25 ─────────────────── #}
+    <div class="poll-panel" data-poll="ap">
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body p-0">
+          {# Header #}
+          <div class="flex items-center justify-between px-5 pt-5 pb-3">
+            <div>
+              <h2 class="text-xl font-bold flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-primary"></span>
+                AP Top 25
+              </h2>
+              {% if ap_poll_date %}
+              <p class="text-xs opacity-50 mt-0.5">{{ ap_poll_date|date:"F j, Y" }}</p>
+              {% endif %}
+            </div>
+            <div class="badge badge-primary badge-outline badge-sm">
+              Week {{ selected_week|default:"—" }}
+            </div>
+          </div>
+
+          {# Table #}
+          <div class="overflow-x-auto">
+            <table class="table table-sm" id="ap-table">
+              <thead>
+                <tr class="bg-base-300 text-xs uppercase tracking-wider">
+                  <th class="w-12 text-center">#</th>
+                  <th>Team</th>
+                  <th class="hidden lg:table-cell">Conference</th>
+                  <th class="text-center">Record</th>
+                  <th class="text-center">+/−</th>
+                  <th class="text-center hidden lg:table-cell">Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for entry in ap_rankings %}
+                <tr class="rank-row hover cursor-pointer transition-colors"
+                    data-conf="{{ entry.team.conference.slug|default:'' }}"
+                    data-name="{{ entry.team.display_name|lower }}"
+                    onclick="window.location='{% url 'opencourt:team-detail' entry.team.slug %}'">
+
+                  {# Rank #}
+                  <td class="text-center">
+                    <span class="font-bold text-lg
+                      {% if entry.ranking <= 3 %}text-success
+                      {% else %}text-gray-500
+                      {% endif %}">
+                      {{ entry.ranking }}
+                    </span>
+                  </td>
+
+                  {# Team #}
+                  <td>
+                    <div class="flex items-center gap-2">
+                      <div class="w-2 h-8 rounded-full flex-shrink-0"
+                           style="background-color: {{ entry.team.primary_color|default:'#6366f1' }};"></div>
+                      <div class="min-w-0">
+                        <div class="font-semibold text-sm truncate">{{ entry.team.school }}</div>
+                        {% if entry.team.mascot %}
+                        <div class="text-xs opacity-40 truncate hidden sm:block">{{ entry.team.mascot }}</div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </td>
+
+                  {# Conference #}
+                  <td class="hidden lg:table-cell">
+                    <span class="badge badge-neutral badge-xs">{{ entry.team.conference.abbrv }}</span>
+                  </td>
+
+                  {# Record #}
+                  <td class="text-center font-mono text-sm">
+                    {% if entry.latest_wins is not None %}
+                      <span class="font-semibold">{{ entry.latest_wins|floatformat:0 }}</span><span class="opacity-40">-</span><span>{{ entry.latest_losses|floatformat:0 }}</span>
+                    {% else %}—{% endif %}
+                  </td>
+
+                  {# Point Margin #}
+                  <td class="text-center font-mono text-sm font-bold">
+                    {% if entry.latest_point_margin is not None %}
+                    <span class="{% if entry.latest_point_margin > 0 %}text-success{% elif entry.latest_point_margin < 0 %}text-error{% endif %}">
+                      {% if entry.latest_point_margin > 0 %}+{% endif %}{{ entry.latest_point_margin|floatformat:1 }}
+                    </span>
+                    {% else %}—{% endif %}
+                  </td>
+
+                  {# Poll Points #}
+                  <td class="text-center text-xs opacity-50 hidden lg:table-cell">
+                    {% if entry.points %}{{ entry.points }}{% else %}—{% endif %}
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="6" class="text-center py-12 opacity-50">
+                    <div class="text-3xl mb-2">📋</div>
+                    No AP rankings available for this week.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ─────────────────── COACHES POLL ─────────────────── #}
+    <div class="poll-panel" data-poll="coaches">
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body p-0">
+          {# Header #}
+          <div class="flex items-center justify-between px-5 pt-5 pb-3">
+            <div>
+              <h2 class="text-xl font-bold flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-secondary"></span>
+                Coaches Poll
+              </h2>
+              {% if coaches_poll_date %}
+              <p class="text-xs opacity-50 mt-0.5">{{ coaches_poll_date|date:"F j, Y" }}</p>
+              {% endif %}
+            </div>
+            <div class="badge badge-secondary badge-outline badge-sm">
+              Week {{ selected_week|default:"—" }}
+            </div>
+          </div>
+
+          {# Table #}
+          <div class="overflow-x-auto">
+            <table class="table table-sm" id="coaches-table">
+              <thead>
+                <tr class="bg-base-300 text-xs uppercase tracking-wider">
+                  <th class="w-12 text-center">#</th>
+                  <th>Team</th>
+                  <th class="hidden lg:table-cell">Conference</th>
+                  <th class="text-center">Record</th>
+                  <th class="text-center">+/−</th>
+                  <th class="text-center hidden lg:table-cell">Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for entry in coaches_rankings %}
+                <tr class="rank-row hover cursor-pointer transition-colors"
+                    data-conf="{{ entry.team.conference.slug|default:'' }}"
+                    data-name="{{ entry.team.display_name|lower }}"
+                    onclick="window.location='{% url 'opencourt:team-detail' entry.team.slug %}'">
+
+                  <td class="text-center">
+                    <span class="font-bold text-lg
+                      {% if entry.ranking <= 3 %}text-success
+                      {% else %}text-gray-500
+                      {% endif %}">
+                      {{ entry.ranking }}
+                    </span>
+                  </td>
+
+                  <td>
+                    <div class="flex items-center gap-2">
+                      <div class="w-2 h-8 rounded-full flex-shrink-0"
+                           style="background-color: {{ entry.team.primary_color|default:'#6366f1' }};"></div>
+                      <div class="min-w-0">
+                        <div class="font-semibold text-sm truncate">{{ entry.team.school }}</div>
+                        {% if entry.team.mascot %}
+                        <div class="text-xs opacity-40 truncate hidden sm:block">{{ entry.team.mascot }}</div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </td>
+
+                  <td class="hidden lg:table-cell">
+                    <span class="badge badge-neutral badge-xs">{{ entry.team.conference.abbrv }}</span>
+                  </td>
+
+                  <td class="text-center font-mono text-sm">
+                    {% if entry.latest_wins is not None %}
+                      <span class="font-semibold">{{ entry.latest_wins|floatformat:0 }}</span><span class="opacity-40">-</span><span>{{ entry.latest_losses|floatformat:0 }}</span>
+                    {% else %}—{% endif %}
+                  </td>
+
+                  <td class="text-center font-mono text-sm font-bold">
+                    {% if entry.latest_point_margin is not None %}
+                    <span class="{% if entry.latest_point_margin > 0 %}text-success{% elif entry.latest_point_margin < 0 %}text-error{% endif %}">
+                      {% if entry.latest_point_margin > 0 %}+{% endif %}{{ entry.latest_point_margin|floatformat:1 }}
+                    </span>
+                    {% else %}—{% endif %}
+                  </td>
+
+                  <td class="text-center text-xs opacity-50 hidden lg:table-cell">
+                    {% if entry.points %}{{ entry.points }}{% else %}—{% endif %}
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="6" class="text-center py-12 opacity-50">
+                    <div class="text-3xl mb-2">📋</div>
+                    No Coaches Poll rankings available for this week.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  {# ═══════════════════════ NO RESULTS ═══════════════════════ #}
+  <div id="no-results" class="hidden text-center py-16">
+    <div class="text-5xl mb-4">🔍</div>
+    <p class="text-lg opacity-60 font-semibold">No ranked teams match your filters</p>
+    <p class="text-sm opacity-40 mt-1" id="no-results-text"></p>
+    <button class="btn btn-ghost btn-sm mt-3" id="clear-filters">Clear Filters</button>
+  </div>
+
 </div>
+
+{# ═══════════════════════ JAVASCRIPT ═══════════════════════ #}
+<script>
+(function() {
+
+  var searchInput  = document.getElementById('rank-search');
+  var confLabel    = document.getElementById('conf-label');
+  var noResults    = document.getElementById('no-results');
+  var noResultsTx  = document.getElementById('no-results-text');
+  var clearBtn     = document.getElementById('clear-filters');
+  var panels       = document.querySelectorAll('.poll-panel');
+  var rows         = document.querySelectorAll('.rank-row');
+
+  var activeConf = 'all';
+
+  // ─── SEARCH ───
+  searchInput.addEventListener('input', applyFilters);
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { searchInput.value = ''; applyFilters(); }
+  });
+
+  // ─── CLEAR ───
+  clearBtn.addEventListener('click', function() {
+    searchInput.value = '';
+    setConf('all');
+    applyFilters();
+  });
+
+  // ─── CONFERENCE FILTER ───
+  document.querySelectorAll('.conf-option').forEach(function(opt) {
+    opt.addEventListener('click', function(e) {
+      e.preventDefault();
+      setConf(opt.getAttribute('data-conf'));
+      applyFilters();
+      if (document.activeElement) document.activeElement.blur();
+    });
+  });
+
+  function setConf(conf) {
+    activeConf = conf;
+    confLabel.textContent = conf === 'all' ? 'All Conferences' : conf;
+    document.querySelectorAll('.conf-option').forEach(function(o) {
+      o.classList.toggle('active', o.getAttribute('data-conf') === conf);
+    });
+  }
+
+  // ─── MOBILE POLL TOGGLE ───
+  document.querySelectorAll('.poll-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var poll = btn.getAttribute('data-poll');
+
+      document.querySelectorAll('.poll-toggle').forEach(function(b) {
+        if (b.getAttribute('data-poll') === poll) {
+          b.classList.remove('btn-ghost');
+          b.classList.add('btn-primary');
+        } else {
+          b.classList.remove('btn-primary');
+          b.classList.add('btn-ghost');
+        }
+      });
+
+      panels.forEach(function(p) {
+        if (window.innerWidth < 768) {
+          p.style.display = (p.getAttribute('data-poll') === poll) ? '' : 'none';
+        }
+      });
+    });
+  });
+
+  // Handle resize — show both on desktop
+  window.addEventListener('resize', function() {
+    if (window.innerWidth >= 768) {
+      panels.forEach(function(p) { p.style.display = ''; });
+    }
+  });
+
+  // Init mobile: hide coaches poll
+  if (window.innerWidth < 768) {
+    panels.forEach(function(p) {
+      p.style.display = (p.getAttribute('data-poll') === 'ap') ? '' : 'none';
+    });
+  }
+
+  // ─── MASTER FILTER ───
+  function applyFilters() {
+    var query = searchInput.value.toLowerCase().trim();
+    var visible = 0;
+
+    rows.forEach(function(row) {
+      var name = row.getAttribute('data-name') || '';
+      var conf = row.getAttribute('data-conf') || '';
+
+      var matchSearch = !query || name.indexOf(query) !== -1;
+      var matchConf   = activeConf === 'all' || conf === activeConf;
+      var show = matchSearch && matchConf;
+
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    // Show/hide panels vs no-results
+    var hasResults = visible > 0;
+    panels.forEach(function(p) {
+      if (!hasResults) {
+        p.style.display = 'none';
+      } else if (window.innerWidth >= 768) {
+        p.style.display = '';
+      }
+    });
+
+    noResults.style.display = hasResults ? 'none' : '';
+
+    if (!hasResults) {
+      var parts = [];
+      if (query) parts.push('"' + searchInput.value + '"');
+      if (activeConf !== 'all') parts.push('conference: ' + activeConf);
+      noResultsTx.textContent = parts.length ? 'No results for ' + parts.join(' in ') : '';
+    }
+  }
+
+})();
+</script>
 {% endblock %}

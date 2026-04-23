@@ -1,57 +1,162 @@
 {% extends 'base.html' %}
 {% load static %}
+
 {% block title %}Conferences — OpenCourt{% endblock %}
 
 {% block content %}
-  <div class="container mx-auto pt-20 h-[calc(100vh-5rem)] flex gap-6">
+<div class="container mx-auto px-4 py-8 max-w-7xl">
 
-    <!-- Left column — scrollable conference buttons (1/4 width) -->
-    <div class="w-1/4 overflow-y-auto flex flex-col gap-1 pr-2">
-      {% for conference in conference_list %}
-        {% if conference.teams.count > 0 %}
-        <button class="btn btn-ghost btn-md w-full justify-start text-lg conf-btn shrink-0"
-                data-target="detail-{{ conference.slug }}"
-                onclick="showConference(this)"
-        >
-          {{ conference.short_name }}
-        </button>
-        {% endif %}
-      {% endfor %}
+  {# ═══════════════════════ HEADER ═══════════════════════ #}
+  <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-3xl font-bold tracking-tight">🏟️ Conferences</h1>
+      <p class="text-sm opacity-60 mt-1">All Division I conferences · Select one to explore</p>
     </div>
 
-    <!-- Right panel — fixed conference details (3/4 width) -->
-    <div class="w-3/4" id="detail-area">
-      <!-- Placeholder shown when nothing is selected -->
-      <div id="detail-placeholder" class="card bg-base-200 shadow-sm p-10 text-center text-gray-400">
-        Select a conference to view its teams
+    <div class="join">
+      <input type="search" id="conf-search" placeholder="Search conferences..."
+             class="input input-bordered join-item input-sm w-full sm:w-56" autocomplete="off" />
+      <span class="btn btn-neutral join-item btn-sm">
+        <i class="fa-solid fa-magnifying-glass"></i>
+      </span>
+    </div>
+  </div>
+
+  {# ═══════════════════════ TWO-PANEL LAYOUT ═══════════════════════ #}
+  <div class="flex flex-col lg:flex-row gap-6" style="min-height: calc(100vh - 12rem);">
+
+    {# ─────────────────── LEFT: CONFERENCE LIST ─────────────────── #}
+    <div class="w-full lg:w-1/4 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
+      <div class="flex flex-col gap-1" id="conf-list">
+        {% for conference in conference_list %}
+          {% if conference.teams.count > 0 %}
+          <button
+            class="conf-btn btn btn-ghost btn-sm w-full justify-between text-left group transition-all"
+            data-target="detail-{{ conference.slug }}"
+            data-name="{{ conference.short_name|lower }} {{ conference.name|lower }} {{ conference.abbrv|lower }}"
+            onclick="showConference(this)">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="font-semibold truncate">{{ conference.short_name }}</span>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <span class="badge badge-ghost badge-xs">{{ conference.team_count }}</span>
+              <i class="fa-solid fa-chevron-right text-[10px] opacity-0 group-hover:opacity-60 transition-opacity"></i>
+            </div>
+          </button>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ─────────────────── RIGHT: DETAIL PANEL ─────────────────── #}
+    <div class="w-full lg:w-3/4 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto" id="detail-area">
+
+      {# Placeholder #}
+      <div id="detail-placeholder" class="card bg-base-200 shadow-md">
+        <div class="card-body items-center text-center py-20">
+          <div class="text-5xl mb-4">🏟️</div>
+          <h3 class="text-xl font-bold opacity-70">Select a Conference</h3>
+          <p class="text-sm opacity-50 max-w-md mt-2">
+            Choose a conference from the list to view standings, team stats,
+            and aggregate conference performance.
+          </p>
+          <div class="flex flex-wrap gap-2 mt-6 justify-center">
+            {% for conference in conference_list %}
+              {% if conference.teams.count > 0 %}
+              <button class="btn btn-ghost btn-xs quick-conf"
+                      data-target="detail-{{ conference.slug }}">
+                {{ conference.abbrv }}
+              </button>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
       </div>
 
+      {# Conference detail panels #}
       {% for conference in conference_list %}
         {% if conference.teams.count > 0 %}
-          <div id="detail-{{ conference.slug }}" class="conf-detail hidden">
+        <div id="detail-{{ conference.slug }}" class="conf-detail hidden">
           {% include 'opencourt/components/conference_card.html' %}
-          </div>
+        </div>
         {% endif %}
       {% endfor %}
     </div>
 
   </div>
-{% endblock %}
+</div>
 
-{% block extra_js %}
-  {{ block.super }}
-  <script>
-    function showConference(btn) {
-      // Hide all detail panels and show placeholder
-      document.querySelectorAll('.conf-detail').forEach(el => el.classList.add('hidden'));
-      document.getElementById('detail-placeholder').classList.add('hidden');
+{# ═══════════════════════ JAVASCRIPT ═══════════════════════ #}
+<script>
+(function() {
 
-      // Show the selected panel
-      document.getElementById(btn.dataset.target).classList.remove('hidden');
+  var searchInput = document.getElementById('conf-search');
+  var confBtns    = document.querySelectorAll('.conf-btn');
+  var placeholder = document.getElementById('detail-placeholder');
 
-      // Update active button styling
-      document.querySelectorAll('.conf-btn').forEach(b => b.classList.remove('btn-active'));
-      btn.classList.add('btn-active');
+  // ─── Show Conference ───
+  window.showConference = function(btn) {
+    var target = btn.getAttribute('data-target');
+
+    // Hide all panels
+    document.querySelectorAll('.conf-detail').forEach(function(el) {
+      el.classList.add('hidden');
+    });
+    placeholder.classList.add('hidden');
+
+    // Show selected
+    var panel = document.getElementById(target);
+    if (panel) panel.classList.remove('hidden');
+
+    // Update active button
+    confBtns.forEach(function(b) {
+      b.classList.remove('btn-active', 'btn-primary');
+      b.classList.add('btn-ghost');
+    });
+    btn.classList.remove('btn-ghost');
+    btn.classList.add('btn-active', 'btn-primary');
+
+    // Scroll panel into view on mobile
+    if (window.innerWidth < 1024 && panel) {
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  </script>
+  };
+
+  // ─── Quick conference buttons in placeholder ───
+  document.querySelectorAll('.quick-conf').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var target = btn.getAttribute('data-target');
+      // Find the matching sidebar button and click it
+      confBtns.forEach(function(b) {
+        if (b.getAttribute('data-target') === target) {
+          showConference(b);
+        }
+      });
+    });
+  });
+
+  // ─── Search ───
+  searchInput.addEventListener('input', function() {
+    var query = searchInput.value.toLowerCase().trim();
+    confBtns.forEach(function(btn) {
+      var name = btn.getAttribute('data-name') || '';
+      btn.style.display = (!query || name.indexOf(query) !== -1) ? '' : 'none';
+    });
+  });
+
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      confBtns.forEach(function(btn) { btn.style.display = ''; });
+    }
+  });
+
+  // ─── Auto-select first conference on desktop ───
+  if (window.innerWidth >= 1024) {
+    var first = document.querySelector('.conf-btn');
+    if (first) showConference(first);
+  }
+
+})();
+</script>
 {% endblock %}

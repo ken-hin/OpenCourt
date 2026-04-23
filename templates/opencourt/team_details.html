@@ -1,306 +1,570 @@
-{# team_details.html — Detail page for a single team.                          #}
-{#                                                                             #}
-{# View: TeamDetailView (views.py)                                             #}
-{# URL:  /teams/<slug>/                                                        #}
-{#                                                                             #}
-{# Layout:                                                                     #}
-{#   1. Team header (name, conference, location)                               #}
-{#   2. Two-column row: left placeholder (future content) + schedule table     #}
-{#      (right half, ~70vh, scrollable with sticky header)                     #}
-{#   3. Historical Data section — 4 ApexCharts (line, radial bar, bar, area)   #}
-{#                                                                             #}
-{# Context variables used:                                                     #}
-{#   team, schedule, stat_years, wins, losses, win_pct, off_rtg, opp_rtg,      #}
-{#   eff_fg, to_ratio, oreb_pct, ft_rate, three_pt_pct, off_pts, opp_pts            #}
-{#                                                                             #}
-{# JS dependencies: ApexCharts (loaded in base.html)                           #}
-{#   - toggleBoxScore(id): toggles the hidden accordion row for box scores     #}
 {% extends 'base.html' %}
 {% load static %}
 
 {% block title %}{{ team.display_name }} — OpenCourt{% endblock %}
 
 {% block content %}
-<div class="pt-20 px-10">
-  <h1 class="text-3xl font-bold mb-1">{{ team.display_name }}</h1>
-  <p class="text-sm text-gray-500 mb-8">{{ team.conference }} · {{ team.current_city }}, {{ team.current_state }}</p>
+<div class="container mx-auto px-4 py-8 max-w-7xl">
 
-  <!-- ── Top row: placeholder (left) + schedule table (right) ────────────── -->
-  <div class="flex gap-6 mb-10">
-    <!-- Left placeholder — reserved for future content -->
-    <div class="w-1/2"></div>
+  {# ═══════════════════════ TEAM HEADER ═══════════════════════ #}
+  <div class="card bg-base-200 shadow-md mb-8 overflow-hidden">
+    {# Color accent bar using team colors #}
+    <div class="h-2 w-full"
+         style="background: linear-gradient(90deg,
+           {{ team.primary_color|default:'#6366f1' }} 0%,
+           {{ team.secondary_color|default:team.primary_color|default:'#6366f1' }} 100%);"></div>
 
-    <!-- Right column: Schedule table (50% width, ~70vh, scrollable) -->
-    <div class="w-1/2" style="height: 70vh;">
-      <!-- Schedule table ──────────────────────────────────────────────────────
-           Current season game list. Each row is clickable — clicking a row toggles
-           an accordion panel (hidden <tr>) that shows the full home/away box score.
+    <div class="card-body">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {# Team identity #}
+        <div>
+          <div class="flex items-center gap-4">
+            <img
+              src="https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/{{ team.source_id|default:team.id }}.png"
+              alt="{{ team.school }} logo"
+              class="w-16 h-16 rounded-lg object-contain bg-white p-2 shadow-md flex-shrink-0"
+              onerror="this.style.display='none'"
+            />
+            <div>
+              <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">{{ team.school }}</h1>
+              {% if team.mascot %}
+              <p class="text-sm opacity-50">{{ team.mascot }}</p>
+              {% endif %}
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 mt-3">
+            {% if team.conference %}
+            <span class="badge badge-primary badge-lg gap-1">{{ team.conference.short_name }}</span>
+            {% endif %}
+            {% if team.current_city and team.current_state %}
+            <span class="text-sm opacity-60">
+              <i class="fa-solid fa-location-dot mr-1"></i>
+              {{ team.current_city }}, {{ team.current_state }}
+            </span>
+            {% endif %}
+            {% if team.current_venue_name %}
+            <span class="text-sm opacity-60">
+              <i class="fa-solid fa-building mr-1"></i>
+              {{ team.current_venue_name }}
+            </span>
+            {% endif %}
+          </div>
+        </div>
 
-           Data source: `schedule` context variable from TeamDetailView, which
-           pre-processes Game + GameTeamStats into flat dicts with home_stats/away_stats.
+        {# Quick stats badges #}
+        {% with stats=team.current_season %}
+        {% if stats %}
+        <div class="flex flex-wrap gap-3">
+          {# Record #}
+          <div class="bg-base-300 rounded-box px-5 py-3 text-center min-w-[90px]">
+            <div class="text-xs uppercase tracking-wider opacity-50 mb-1">Record</div>
+            <div class="text-2xl font-bold font-mono">
+              {{ stats.wins|floatformat:0 }}-{{ stats.losses|floatformat:0 }}
+            </div>
+            {% if stats.win_pct is not None %}
+            <div class="text-xs mt-0.5
+              {% if stats.win_pct >= 75 %}text-success
+              {% elif stats.win_pct >= 50 %}text-warning
+              {% else %}text-error{% endif %}">
+              {{ stats.win_pct|floatformat:1 }}%
+            </div>
+            {% endif %}
+          </div>
 
-           Accordion behavior:
-             - Each game row has onclick="toggleBoxScore('box-N')" where N = forloop.counter
-             - The hidden row immediately below has id="box-N" and class="hidden"
-             - toggleBoxScore() toggles the "hidden" class to show/hide the box score
-             - If no GameTeamStats exist for a game, a fallback message is shown
-      -->
-      <h2 class="text-2xl font-bold mb-4">Schedule</h2>
-      {% if schedule %}
-      <div class="overflow-y-auto overflow-x-auto rounded-lg" style="height: calc(70vh - 48px);">
-        <table class="table table-zebra w-full">
-          <thead class="sticky top-0 z-10 bg-base-100">
-            <tr>
-              <th>Date</th>
-              <th>Opponent</th>
-              <th>H/A</th>
-              <th>Score</th>
-              <th>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in schedule %}
-            <tr class="hover cursor-pointer" onclick="toggleBoxScore('box-{{ forloop.counter }}')">
-              <td>{{ row.game.start_date|date:"M d, Y" }}</td>
-              <td>{{ row.opponent.display_name }}</td>
-              <td>{{ row.is_home|yesno:"Home,Away" }}</td>
-              <td>
-                {% if row.team_points is not None and row.opp_points is not None %}
-                  {{ row.team_points }} – {{ row.opp_points }}
-                {% else %}
-                  —
-                {% endif %}
-              </td>
-              <td>
-                {% if row.won is not None %}
-                  <span class="badge {% if row.won %}badge-success{% else %}badge-error{% endif %}">
-                    {{ row.won|yesno:"W,L" }}
-                  </span>
-                {% endif %}
-              </td>
-            </tr>
-            <!-- Accordion: 3-column box score with progress bars (hidden by default) -->
-            <tr id="box-{{ forloop.counter }}" class="hidden">
-              <td colspan="5" class="p-0">
-                {% if row.home_stats and row.away_stats %}
-                <div class="bg-base-300 px-4 py-5">
-                  {# Team name headers #}
-                  <div class="grid grid-cols-[1fr_auto_1fr] gap-x-4 mb-4 px-2">
-                    <div class="text-right font-bold text-sm">{{ row.game.home_team.display_name }}</div>
-                    <div class="text-center w-10">VS.</div>
-                    <div class="text-left font-bold text-sm">{{ row.game.away_team.display_name }}</div>
-                  </div>
+          {# Off Rating #}
+          {% if stats.off_rating %}
+          <div class="bg-base-300 rounded-box px-5 py-3 text-center min-w-[90px]">
+            <div class="text-xs uppercase tracking-wider opacity-50 mb-1">Off Rtg</div>
+            <div class="text-2xl font-bold font-mono {% if stats.off_rating >= 110 %}text-success{% endif %}">
+              {{ stats.off_rating|floatformat:1 }}
+            </div>
+            <div class="text-xs opacity-40 mt-0.5">pts/100 poss</div>
+          </div>
+          {% endif %}
 
-                  {# Stat rows — each row is a 3-column grid: home bar | label | away bar #}
-                  <div class="boxscore-stats space-y-1"
-                       data-home-color="{{ row.game.home_team.primary_color|default:'#6366f1' }}"
-                       data-away-color="{{ row.game.away_team.primary_color|default:'#ef4444' }}">
+          {# Def Rating #}
+          {% if stats.opp_rating %}
+          <div class="bg-base-300 rounded-box px-5 py-3 text-center min-w-[90px]">
+            <div class="text-xs uppercase tracking-wider opacity-50 mb-1">Def Rtg</div>
+            <div class="text-2xl font-bold font-mono {% if stats.opp_rating <= 95 %}text-success{% endif %}">
+              {{ stats.opp_rating|floatformat:1 }}
+            </div>
+            <div class="text-xs opacity-40 mt-0.5">pts/100 poss</div>
+          </div>
+          {% endif %}
 
-                    {% with hs=row.home_stats aws=row.away_stats %}
-                    <div class="stat-row"
-                         data-home="{{ hs.points|default_if_none:0 }}"
-                         data-away="{{ aws.points|default_if_none:0 }}"
-                         data-label="PTS">
-                    </div>
-                    <div class="stat-row"
-                         data-home="{{ hs.fg_pct|default_if_none:0 }}"
-                         data-away="{{ aws.fg_pct|default_if_none:0 }}"
-                         data-label="FG%"
-                         data-home-display="{% if hs.fg_made is not None %}{{ hs.fg_made|floatformat:0 }}-{{ hs.fg_attempted|floatformat:0 }}{% endif %}"
-                         data-away-display="{% if aws.fg_made is not None %}{{ aws.fg_made|floatformat:0 }}-{{ aws.fg_attempted|floatformat:0 }}{% endif %}">
-                    </div>
-                    <div class="stat-row"
-                         data-home="{{ hs.three_pt_pct|default_if_none:0 }}"
-                         data-away="{{ aws.three_pt_pct|default_if_none:0 }}"
-                         data-label="3PT%"
-                         data-home-display="{% if hs.three_pt_made is not None %}{{ hs.three_pt_made|floatformat:0 }}-{{ hs.three_pt_attempted|floatformat:0 }}{% endif %}"
-                         data-away-display="{% if aws.three_pt_made is not None %}{{ aws.three_pt_made|floatformat:0 }}-{{ aws.three_pt_attempted|floatformat:0 }}{% endif %}">
-                    </div>
-                    <div class="stat-row"
-                         data-home="{{ hs.ft_pct|default_if_none:0 }}"
-                         data-away="{{ aws.ft_pct|default_if_none:0 }}"
-                         data-label="FT%"
-                         data-home-display="{% if hs.ft_made is not None %}{{ hs.ft_made|floatformat:0 }}-{{ hs.ft_attempted|floatformat:0 }}{% endif %}"
-                         data-away-display="{% if aws.ft_made is not None %}{{ aws.ft_made|floatformat:0 }}-{{ aws.ft_attempted|floatformat:0 }}{% endif %}">
-                    </div>
-                    <div class="stat-row"
-                         data-home="{{ hs.reb_total|default_if_none:0 }}"
-                         data-away="{{ aws.reb_total|default_if_none:0 }}"
-                         data-label="REB"></div>
-                    <div class="stat-row"
-                         data-home="{{ hs.reb_offensive|default_if_none:0 }}"
-                         data-away="{{ aws.reb_offensive|default_if_none:0 }}"
-                         data-label="OREB">
-                    </div>
-                    <div class="stat-row"
-                         data-home="{{ hs.assists|default_if_none:0 }}"
-                         data-away="{{ aws.assists|default_if_none:0 }}"
-                         data-label="AST">
-                    </div>
-                    <div class="stat-row"
-                         data-home="{{ hs.steals|default_if_none:0 }}"
-                         data-away="{{ aws.steals|default_if_none:0 }}"
-                         data-label="STL">
-                    </div>
-                    <div class="stat-row"
-                         data-home="{{ hs.blocks|default_if_none:0 }}"
-                         data-away="{{ aws.blocks|default_if_none:0 }}"
-                         data-label="BLK">
-                    </div>
-                    <div class="stat-row"
-                         data-home="{{ hs.turnovers|default_if_none:0 }}"
-                         data-away="{{ aws.turnovers|default_if_none:0 }}"
-                         data-label="TO">
-                    </div>
-                    {% endwith %}
-                  </div>
-                </div>
-                {% else %}
-                <div class="bg-base-300 p-4 text-gray-500 text-sm">Box score not available for this game.</div>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+          {# Pace #}
+          {% if stats.pace %}
+          <div class="bg-base-300 rounded-box px-5 py-3 text-center min-w-[90px]">
+            <div class="text-xs uppercase tracking-wider opacity-50 mb-1">Pace</div>
+            <div class="text-2xl font-bold font-mono">{{ stats.pace|floatformat:1 }}</div>
+            <div class="text-xs opacity-40 mt-0.5">poss/40 min</div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endwith %}
       </div>
-      {% else %}
-      <p class="text-gray-500 mb-8">No games found for this season.</p>
+    </div>
+  </div>
+
+  {# ═══════════════════════ SEASON STATS + SCHEDULE ROW ═══════════════════════ #}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+    {# ─────────────────── LEFT: CURRENT SEASON STATS ─────────────────── #}
+    <div class="space-y-6">
+
+      {# Four Factors Card #}
+      {% with stats=team.current_season %}
+      {% if stats %}
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title text-lg">
+            <i class="fa-solid fa-chart-pie text-primary"></i>
+            Four Factors
+          </h2>
+          <div class="divider mt-0 mb-2"></div>
+
+          <div class="space-y-4">
+            {# eFG% #}
+            {% if stats.off_eff_fg_pct %}
+            <div>
+              <div class="flex justify-between text-sm mb-1">
+                <span class="font-medium">Effective FG%</span>
+                <span class="font-mono font-bold">{{ stats.off_eff_fg_pct|floatformat:1 }}%</span>
+              </div>
+              <progress class="progress progress-primary w-full" value="{{ stats.off_eff_fg_pct }}" max="65"></progress>
+            </div>
+            {% endif %}
+
+            {# TO Ratio #}
+            {% if stats.off_turnover_ratio %}
+            <div>
+              <div class="flex justify-between text-sm mb-1">
+                <span class="font-medium">Turnover Ratio</span>
+                <span class="font-mono font-bold">{{ stats.off_turnover_ratio|floatformat:1 }}%</span>
+              </div>
+              <progress class="progress progress-secondary w-full" value="{{ stats.off_turnover_ratio }}" max="30"></progress>
+            </div>
+            {% endif %}
+
+            {# OREB% #}
+            {% if stats.off_oreb_pct %}
+            <div>
+              <div class="flex justify-between text-sm mb-1">
+                <span class="font-medium">Off Rebound %</span>
+                <span class="font-mono font-bold">{{ stats.off_oreb_pct|floatformat:1 }}%</span>
+              </div>
+              <progress class="progress progress-accent w-full" value="{{ stats.off_oreb_pct }}" max="45"></progress>
+            </div>
+            {% endif %}
+
+            {# FT Rate #}
+            {% if stats.off_ft_rate %}
+            <div>
+              <div class="flex justify-between text-sm mb-1">
+                <span class="font-medium">Free Throw Rate</span>
+                <span class="font-mono font-bold">{{ stats.off_ft_rate|floatformat:1 }}%</span>
+              </div>
+              <progress class="progress progress-info w-full" value="{{ stats.off_ft_rate }}" max="50"></progress>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {# Shooting Splits Card #}
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title text-lg">
+            <i class="fa-solid fa-basketball text-secondary"></i>
+            Shooting Splits
+          </h2>
+          <div class="divider mt-0 mb-2"></div>
+
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr class="text-xs uppercase tracking-wider opacity-50">
+                  <th>Type</th>
+                  <th class="text-center">Made</th>
+                  <th class="text-center">Att</th>
+                  <th class="text-center">Pct</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if stats.off_fg_pct %}
+                <tr>
+                  <td class="font-medium">Field Goals</td>
+                  <td class="text-center font-mono">{{ stats.off_fg_made|floatformat:0|default:"—" }}</td>
+                  <td class="text-center font-mono">{{ stats.off_fg_attempted|floatformat:0|default:"—" }}</td>
+                  <td class="text-center font-mono font-bold">{{ stats.off_fg_pct|floatformat:1 }}%</td>
+                </tr>
+                {% endif %}
+                {% if stats.off_2pt_pct %}
+                <tr>
+                  <td class="font-medium">2-Point</td>
+                  <td class="text-center font-mono">{{ stats.off_2pt_made|floatformat:0|default:"—" }}</td>
+                  <td class="text-center font-mono">{{ stats.off_2pt_attempted|floatformat:0|default:"—" }}</td>
+                  <td class="text-center font-mono font-bold">{{ stats.off_2pt_pct|floatformat:1 }}%</td>
+                </tr>
+                {% endif %}
+                {% if stats.off_3pt_pct %}
+                <tr>
+                  <td class="font-medium">3-Point</td>
+                  <td class="text-center font-mono">{{ stats.off_3pt_made|floatformat:0|default:"—" }}</td>
+                  <td class="text-center font-mono">{{ stats.off_3pt_attempted|floatformat:0|default:"—" }}</td>
+                  <td class="text-center font-mono font-bold">{{ stats.off_3pt_pct|floatformat:1 }}%</td>
+                </tr>
+                {% endif %}
+                {% if stats.off_ft_pct %}
+                <tr>
+                  <td class="font-medium">Free Throws</td>
+                  <td class="text-center font-mono">{{ stats.off_ft_made|floatformat:0|default:"—" }}</td>
+                  <td class="text-center font-mono">{{ stats.off_ft_attempted|floatformat:0|default:"—" }}</td>
+                  <td class="text-center font-mono font-bold">{{ stats.off_ft_pct|floatformat:1 }}%</td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {# Per-Game Averages Card #}
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title text-lg">
+            <i class="fa-solid fa-calculator text-accent"></i>
+            Per-Game Averages
+          </h2>
+          <div class="divider mt-0 mb-2"></div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {% if stats.off_points and stats.games %}
+            <div class="bg-base-300 rounded-box p-3 text-center">
+              <div class="text-xs uppercase tracking-wider opacity-50">PPG</div>
+              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_points|floatformat:0 }}</div>
+            </div>
+            {% endif %}
+            {% if stats.off_reb_total and stats.games %}
+            <div class="bg-base-300 rounded-box p-3 text-center">
+              <div class="text-xs uppercase tracking-wider opacity-50">RPG</div>
+              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_reb_total|floatformat:0 }}</div>
+            </div>
+            {% endif %}
+            {% if stats.off_assists and stats.games %}
+            <div class="bg-base-300 rounded-box p-3 text-center">
+              <div class="text-xs uppercase tracking-wider opacity-50">APG</div>
+              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_assists|floatformat:0 }}</div>
+            </div>
+            {% endif %}
+            {% if stats.off_turnovers and stats.games %}
+            <div class="bg-base-300 rounded-box p-3 text-center">
+              <div class="text-xs uppercase tracking-wider opacity-50">TOPG</div>
+              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_turnovers|floatformat:0 }}</div>
+            </div>
+            {% endif %}
+            {% if stats.off_steals and stats.games %}
+            <div class="bg-base-300 rounded-box p-3 text-center">
+              <div class="text-xs uppercase tracking-wider opacity-50">SPG</div>
+              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_steals|floatformat:0 }}</div>
+            </div>
+            {% endif %}
+            {% if stats.off_blocks and stats.games %}
+            <div class="bg-base-300 rounded-box p-3 text-center">
+              <div class="text-xs uppercase tracking-wider opacity-50">BPG</div>
+              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_blocks|floatformat:0 }}</div>
+            </div>
+            {% endif %}
+            {% if stats.opp_points and stats.games %}
+            <div class="bg-base-300 rounded-box p-3 text-center">
+              <div class="text-xs uppercase tracking-wider opacity-50">Opp PPG</div>
+              <div class="text-xl font-bold font-mono mt-1 text-error">{{ stats.opp_points|floatformat:0 }}</div>
+            </div>
+            {% endif %}
+            {% if stats.off_points and stats.opp_points %}
+            <div class="bg-base-300 rounded-box p-3 text-center">
+              <div class="text-xs uppercase tracking-wider opacity-50">Margin</div>
+              <div class="text-xl font-bold font-mono mt-1
+                {% if stats.point_margin > 0 %}text-success{% elif stats.point_margin < 0 %}text-error{% endif %}">
+                {% if stats.point_margin > 0 %}+{% endif %}{{ stats.point_margin|floatformat:1 }}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
       {% endif %}
+      {% endwith %}
+    </div>
+
+    {# ─────────────────── RIGHT: SCHEDULE ─────────────────── #}
+    <div>
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body p-0">
+          <div class="flex items-center justify-between px-5 pt-5 pb-3">
+            <h2 class="card-title text-lg">
+              <i class="fa-solid fa-calendar-days text-info"></i>
+              Schedule
+            </h2>
+            {% if schedule %}
+            <span class="badge badge-ghost badge-sm">{{ schedule|length }} games</span>
+            {% endif %}
+          </div>
+
+          {% if schedule %}
+          <div class="overflow-y-auto overflow-x-auto" style="max-height: 80vh;">
+            <table class="table table-sm">
+              <thead class="sticky top-0 z-10 bg-base-300">
+                <tr class="text-xs uppercase tracking-wider">
+                  <th>Date</th>
+                  <th>Opponent</th>
+                  <th class="text-center">H/A</th>
+                  <th class="text-center">Score</th>
+                  <th class="text-center">W/L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in schedule %}
+                <tr class="hover cursor-pointer transition-colors"
+                    onclick="toggleBoxScore('box-{{ forloop.counter }}')">
+                  <td class="text-sm whitespace-nowrap">{{ row.game.start_date|date:"M d" }}</td>
+                  <td>
+                    <div class="flex items-center gap-2">
+                      {% if row.opponent.primary_color %}
+                      <div class="w-2 h-2 rounded-full flex-shrink-0"
+                           style="background-color: {{ row.opponent.primary_color }};"></div>
+                      {% endif %}
+                      <span class="font-medium text-sm truncate max-w-[160px]">
+                        {% if row.opponent.conference != team.conference %}
+                        <span class="opacity-40 text-xs mr-1">{{ row.opponent.conference.abbrv }}</span>
+                        {% endif %}
+                        {{ row.opponent.school }}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    {% if row.game.neutral_site %}
+                    <span class="badge badge-ghost badge-xs">N</span>
+                    {% elif row.is_home %}
+                    <span class="badge badge-outline badge-xs">H</span>
+                    {% else %}
+                    <span class="badge badge-outline badge-xs">A</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center font-mono text-sm">
+                    {% if row.team_points is not None and row.opp_points is not None %}
+                      <span class="font-bold">{{ row.team_points }}</span>
+                      <span class="opacity-40">–</span>
+                      {{ row.opp_points }}
+                    {% else %}
+                      <span class="opacity-30">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    {% if row.won is not None %}
+                    <span class="badge badge-sm
+                      {% if row.won %}badge-success{% else %}badge-error{% endif %}">
+                      {{ row.won|yesno:"W,L" }}
+                    </span>
+                    {% else %}
+                    <span class="badge badge-ghost badge-sm">TBD</span>
+                    {% endif %}
+                  </td>
+                </tr>
+
+                {# ── Accordion: Box Score ── #}
+                <tr id="box-{{ forloop.counter }}" class="hidden">
+                  <td colspan="5" class="p-0">
+                    {% if row.home_stats and row.away_stats %}
+                    <div class="bg-base-300 px-4 py-5">
+                      {# Team headers #}
+                      <div class="grid grid-cols-[1fr_auto_1fr] gap-x-4 mb-4 px-2">
+                        <div class="text-right font-bold text-sm flex items-center justify-end gap-2">
+                          {{ row.game.home_team.school }}
+                          <div class="w-2 h-2 rounded-full"
+                               style="background-color: {{ row.game.home_team.primary_color|default:'#6366f1' }};"></div>
+                        </div>
+                        <div class="text-center text-xs opacity-40 font-semibold w-10">VS</div>
+                        <div class="text-left font-bold text-sm flex items-center gap-2">
+                          <div class="w-2 h-2 rounded-full"
+                               style="background-color: {{ row.game.away_team.primary_color|default:'#ef4444' }};"></div>
+                          {{ row.game.away_team.school }}
+                        </div>
+                      </div>
+
+                      {# Score by half #}
+                      {% if row.game.home_period_points and row.game.away_period_points %}
+                      <div class="flex justify-center gap-6 mb-4 text-xs">
+                        {% for pts in row.game.home_period_points %}
+                        <div class="text-center">
+                          <div class="opacity-40">{{ forloop.counter }}H</div>
+                          <div class="font-mono font-bold">{{ pts }} – {{ row.game.away_period_points|slice:forloop.counter0|first }}</div>
+                        </div>
+                        {% endfor %}
+                      </div>
+                      {% endif %}
+
+                      {# Stat bars #}
+                      <div class="boxscore-stats space-y-1"
+                           data-home-color="{{ row.game.home_team.primary_color|default:'#6366f1' }}"
+                           data-away-color="{{ row.game.away_team.primary_color|default:'#ef4444' }}">
+
+                        {% with hs=row.home_stats aws=row.away_stats %}
+                        <div class="stat-row" data-home="{{ hs.points|default_if_none:0 }}" data-away="{{ aws.points|default_if_none:0 }}" data-label="PTS"></div>
+                        <div class="stat-row" data-home="{{ hs.fg_pct|default_if_none:0 }}" data-away="{{ aws.fg_pct|default_if_none:0 }}" data-label="FG%"
+                             data-home-display="{% if hs.fg_made is not None %}{{ hs.fg_made|floatformat:0 }}-{{ hs.fg_attempted|floatformat:0 }}{% endif %}"
+                             data-away-display="{% if aws.fg_made is not None %}{{ aws.fg_made|floatformat:0 }}-{{ aws.fg_attempted|floatformat:0 }}{% endif %}"></div>
+                        <div class="stat-row" data-home="{{ hs.three_pt_pct|default_if_none:0 }}" data-away="{{ aws.three_pt_pct|default_if_none:0 }}" data-label="3PT%"
+                             data-home-display="{% if hs.three_pt_made is not None %}{{ hs.three_pt_made|floatformat:0 }}-{{ hs.three_pt_attempted|floatformat:0 }}{% endif %}"
+                             data-away-display="{% if aws.three_pt_made is not None %}{{ aws.three_pt_made|floatformat:0 }}-{{ aws.three_pt_attempted|floatformat:0 }}{% endif %}"></div>
+                        <div class="stat-row" data-home="{{ hs.ft_pct|default_if_none:0 }}" data-away="{{ aws.ft_pct|default_if_none:0 }}" data-label="FT%"
+                             data-home-display="{% if hs.ft_made is not None %}{{ hs.ft_made|floatformat:0 }}-{{ hs.ft_attempted|floatformat:0 }}{% endif %}"
+                             data-away-display="{% if aws.ft_made is not None %}{{ aws.ft_made|floatformat:0 }}-{{ aws.ft_attempted|floatformat:0 }}{% endif %}"></div>
+                        <div class="stat-row" data-home="{{ hs.reb_total|default_if_none:0 }}" data-away="{{ aws.reb_total|default_if_none:0 }}" data-label="REB"></div>
+                        <div class="stat-row" data-home="{{ hs.reb_offensive|default_if_none:0 }}" data-away="{{ aws.reb_offensive|default_if_none:0 }}" data-label="OREB"></div>
+                        <div class="stat-row" data-home="{{ hs.assists|default_if_none:0 }}" data-away="{{ aws.assists|default_if_none:0 }}" data-label="AST"></div>
+                        <div class="stat-row" data-home="{{ hs.steals|default_if_none:0 }}" data-away="{{ aws.steals|default_if_none:0 }}" data-label="STL"></div>
+                        <div class="stat-row" data-home="{{ hs.blocks|default_if_none:0 }}" data-away="{{ aws.blocks|default_if_none:0 }}" data-label="BLK"></div>
+                        <div class="stat-row" data-home="{{ hs.turnovers|default_if_none:0 }}" data-away="{{ aws.turnovers|default_if_none:0 }}" data-label="TO"></div>
+                        {% if hs.eff_fg_pct is not None %}
+                        <div class="stat-row" data-home="{{ hs.eff_fg_pct|default_if_none:0 }}" data-away="{{ aws.eff_fg_pct|default_if_none:0 }}" data-label="eFG%"></div>
+                        {% endif %}
+                        {% if hs.points_in_paint is not None %}
+                        <div class="stat-row" data-home="{{ hs.points_in_paint|default_if_none:0 }}" data-away="{{ aws.points_in_paint|default_if_none:0 }}" data-label="PITP"></div>
+                        {% endif %}
+                        {% if hs.points_off_turnovers is not None %}
+                        <div class="stat-row" data-home="{{ hs.points_off_turnovers|default_if_none:0 }}" data-away="{{ aws.points_off_turnovers|default_if_none:0 }}" data-label="PTO"></div>
+                        {% endif %}
+                        {% if hs.points_fast_break is not None %}
+                        <div class="stat-row" data-home="{{ hs.points_fast_break|default_if_none:0 }}" data-away="{{ aws.points_fast_break|default_if_none:0 }}" data-label="FBP"></div>
+                        {% endif %}
+                        {% endwith %}
+                      </div>
+                    </div>
+                    {% else %}
+                    <div class="bg-base-300 p-6 text-center">
+                      <span class="text-sm opacity-50">Box score not available for this game.</span>
+                    </div>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-12">
+            <div class="text-3xl mb-2">📅</div>
+            <p class="opacity-50">No games found for this season.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  {# ═══════════════════════ HISTORICAL DATA ═══════════════════════ #}
+  <div class="mb-8">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-2xl font-bold tracking-tight">
+        <i class="fa-solid fa-chart-line text-primary mr-2"></i>
+        Historical Trends
+      </h2>
+    </div>
+
+    {# Top row: PPG line + Four Factors radial #}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body p-4">
+          <div id="line-adwords" class="min-h-[300px]"></div>
+        </div>
+      </div>
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body p-4">
+          <div id="" class="min-h-[300px]">UNDER CONSTRUCTION</div>
+        </div>
+      </div>
+    </div>
+
+    {# Bottom row: W/L bar + Efficiency area #}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body p-4">
+          <div id="barchart" class="min-h-[320px]"></div>
+        </div>
+      </div>
+      <div class="card bg-base-200 shadow-md">
+        <div class="card-body p-4">
+          <div id="areachart" class="min-h-[320px]"></div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- ── Historical Data section ──────────────────────────────────────────── -->
-  <h2 class="text-2xl font-bold mb-4">Historical Data</h2>
-
-  <!-- Top charts row -->
-  <div class="grid grid-cols-4 gap-4 mb-4">
-    <div class="card bg-base-200 col-start-1 col-end-3 p-4">
-      <div id="line-adwords"></div>
-    </div>
-    <div class="card bg-base-200 col-start-3 col-end-5 p-4">
-      <div id="radialBarBottom"></div>
-    </div>
-  </div>
-
-  <!-- Bottom charts row -->
-  <div class="grid grid-cols-2 gap-4 mb-8">
-    <div class="card bg-base-200 p-4">
-      <div id="barchart"></div>
-    </div>
-    <div class="card bg-base-200 p-4">
-      <div id="areachart"></div>
-    </div>
-  </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
   {{ block.super }}
   <script>
-    // -------------------------------------------------------------------------
-    // Chart data — injected directly from Django context via {{ var|safe }}.
-    // -------------------------------------------------------------------------
-    const years = {{ stat_years|safe }};
-    const winPct = {{ win_pct|safe }};
-    const offRtg = {{ off_rtg|safe }};
-    const oppRtg = {{ opp_rtg|safe }};
-    const threePct = {{ three_pt_pct|safe }};
-    const effFg = {{ eff_fg|safe }};
-    const TO_ratio = {{ to_ratio|safe }};
-    const oreb_pct = {{ oreb_pct|safe }};
-    const ft_rate = {{ ft_rate|safe }};
-    const offPts = {{ off_pts|safe }};
-    const oppPts = {{ opp_pts|safe }};
-    const wins = {{ wins|safe }};
-    const losses = {{ losses|safe }};
+    // ─── Chart data from Django context ───
+    var years    = {{ stat_years|safe }};
+    var winPct   = {{ win_pct|safe }};
+    var offRtg   = {{ off_rtg|safe }};
+    var oppRtg   = {{ opp_rtg|safe }};
+    var threePct = {{ three_pt_pct|safe }};
+    var effFg    = {{ eff_fg|safe }};
+    var TO_ratio = {{ to_ratio|safe }};
+    var oreb_pct = {{ oreb_pct|safe }};
+    var ft_rate  = {{ ft_rate|safe }};
+    var offPts   = {{ off_pts|safe }};
+    var oppPts   = {{ opp_pts|safe }};
+    var wins     = {{ wins|safe }};
+    var losses   = {{ losses|safe }};
 
-    // -------------------------------------------------------------------------
-    // Global ApexCharts defaults — applied to every chart on this page.
-    // -------------------------------------------------------------------------
+    // Team color for chart accents
+    var teamColor = '#10b981';
+
+    // ─── ApexCharts global defaults ───
     window.Apex = {
-      chart: {
-        toolbar: { show: false },
-        fontFamily: 'inherit',
-      },
-      stroke: { width: 6 },
+      chart: { toolbar: { show: false }, fontFamily: 'inherit' },
+      stroke: { width: 3 },
       dataLabels: { enabled: false },
       tooltip: { theme: 'dark' },
-      grid: {
-        borderColor: '#e5e7eb',
-        xaxis: {
-          lines: { show: false }
-        },
-      },
+      grid: { borderColor: 'rgba(255,255,255,0.08)', xaxis: { lines: { show: false } } },
     };
-    // -------------------------------------------------------------------------
-    // Line — Points scored vs points allowed per game over time
-    // -------------------------------------------------------------------------
+
+    // ─── Line: Points Scored vs Allowed ───
     new ApexCharts(document.querySelector('#line-adwords'), {
       chart: { type: 'line', height: 300 },
       series: [
-        { name: 'Points Scored',  data: offPts,  },
+        { name: 'Points Scored',  data: offPts },
         { name: 'Points Allowed', data: oppPts },
       ],
-      stroke: {
-        curve: 'smooth',
-        width: 2
-      },
+      stroke: { curve: 'smooth', width: 2 },
       xaxis: {
         categories: years,
         tickAmount: 6,
         tooltip: { enabled: false },
-        labels: { style: { colors: '#b2ccd6' } }
+        labels: { style: { colors: '#9ca3af' } }
       },
       yaxis: {
-        title: {
-          text: 'Pts / Game',
-          style: { color: '#b2ccd6' }
-        },
+        title: { text: 'Pts / Game', style: { color: '#9ca3af' } },
         decimalsInFloat: 1,
-        labels: { style: { colors: '#b2ccd6' } }
+        labels: { style: { colors: '#9ca3af' } }
       },
-      title: { text: 'Points Per Game',
-        align: 'left',
-        style: { color: '#b2ccd6'}
-      },
-      legend: { position: 'top',
-        horizontalAlign: 'right',
-        labels: { colors: '#b2ccd6' }
-      },
-      colors: ['#6366f1', '#ef4444'],
+      title: { text: 'Points Per Game', align: 'left', style: { color: '#d1d5db' } },
+      legend: { position: 'top', horizontalAlign: 'right', labels: { colors: '#9ca3af' } },
+      colors: [teamColor, '#ef4444'],
     }).render();
 
-    // -------------------------------------------------------------------------
-    // Radial bar — latest season shooting efficiency snapshot
-    // -------------------------------------------------------------------------
-    const chart_effFg      = effFg.filter(Boolean).at(-1)    ?? 0;
-    const chart_to_ratio   = TO_ratio.filter(Boolean).at(-1) ?? 0;
-    const chart_oreb_pct   = oreb_pct.filter(Boolean).at(-1) ?? 0;
-    const chart_ft_rate    = ft_rate.filter(Boolean).at(-1)  ?? 0;
+    // ─── NEED TO ADD A NEW CHART HERE ───
 
-    new ApexCharts(document.querySelector('#radialBarBottom'), {
-      chart: { type: 'radialBar', height: 350 },
-      series: [chart_effFg, chart_to_ratio, chart_oreb_pct, chart_ft_rate],
-      labels: ['eFG%', 'TOV%', 'OR%', 'FTRate'],
-      plotOptions: {
-        radialBar: {
-          hollow: { size: '40%' },
-          track: { show: true },
-          startAngle: -180,
-          endAngle: 180,
-          dataLabels: {
-            name: { fontSize: '16px' },
-            value: { fontSize: '16px', color: '#b2ccd6' },
-          },
-        },
-      },
-      title: { text: 'Four Factors', align: 'left', style: { color: '#b2ccd6'} },
-    }).render();
 
-    // -------------------------------------------------------------------------
-    // Bar — wins vs losses per season
-    // -------------------------------------------------------------------------
+    // ─── Bar: Wins & Losses ───
     new ApexCharts(document.querySelector('#barchart'), {
       chart: { type: 'bar', height: 320, stacked: true },
       series: [
@@ -310,147 +574,97 @@
       xaxis: {
         categories: years,
         tickAmount: 8,
-        labels: { style: { colors: '#b2ccd6' } }
+        labels: { style: { colors: '#9ca3af' } }
       },
       yaxis: {
-        title: {
-          text: 'Games',
-          style: { color: '#b2ccd6' }
-        },
-        labels: { style: {colors: '#b2ccd6'} }
+        title: { text: 'Games', style: { color: '#9ca3af' } },
+        labels: { style: { colors: '#9ca3af' } }
       },
-      plotOptions: {
-        bar: { columnWidth: '60%' }
-      },
+      plotOptions: { bar: { columnWidth: '55%', borderRadius: 3 } },
       colors: ['#10b981', '#ef4444'],
-      title: {
-        text: 'Wins & Losses',
-        align: 'left',
-        style: { color: '#b2ccd6'}
-      },
-      legend: {
-        position: 'top',
-        horizontalAlign: 'right',
-        labels: { colors: '#b2ccd6'}
-      },
+      title: { text: 'Wins & Losses', align: 'left', style: { color: '#d1d5db' } },
+      legend: { position: 'top', horizontalAlign: 'right', labels: { colors: '#9ca3af' } },
     }).render();
 
-    // -------------------------------------------------------------------------
-    // Area — offensive vs defensive rating over time
-    // -------------------------------------------------------------------------
+    // ─── Area: Off vs Def Rating ───
     new ApexCharts(document.querySelector('#areachart'), {
       chart: { type: 'area', height: 320 },
       series: [
         { name: 'Off Rating', data: offRtg },
-        { name: 'Opp Rating', data: oppRtg },
+        { name: 'Def Rating', data: oppRtg },
       ],
       stroke: { curve: 'smooth', width: 2 },
-      fill: { opacity: 0.15 },
+      fill: { opacity: 0.1 },
       xaxis: {
         categories: years,
         tickAmount: 6,
         tooltip: { enabled: false },
-        labels: {
-          style: { colors: '#b2ccd6' }
-        }
+        labels: { style: { colors: '#9ca3af' } }
       },
       yaxis: {
-        title: {
-          text: 'Rating',
-          style: { color: '#b2ccd6'}
-        },
+        title: { text: 'Rating (pts/100 poss)', style: { color: '#9ca3af' } },
         decimalsInFloat: 1,
-        labels: {
-          style: { colors: '#b2ccd6' }
-        }
+        labels: { style: { colors: '#9ca3af' } }
       },
-      title: {
-        text: 'Offensive vs Defensive Rating',
-        align: 'left',
-        style: { color: '#b2ccd6'}
-      },
-      legend: {
-        position: 'top',
-        horizontalAlign: 'right',
-        labels: { colors: '#b2ccd6' }
-      },
-      colors: ['#6366f1', '#ef4444'],
+      title: { text: 'Offensive vs Defensive Rating', align: 'left', style: { color: '#d1d5db' } },
+      legend: { position: 'top', horizontalAlign: 'right', labels: { colors: '#9ca3af' } },
+      colors: [teamColor, '#ef4444'],
     }).render();
 
-    // -------------------------------------------------------------------------
-    // Schedule table — accordion toggle + progress bar rendering
-    // -------------------------------------------------------------------------
-
-    /**
-     * Build the 3-column progress bar layout for a .boxscore-stats container.
-     * Called once per accordion the first time it's opened. Each .stat-row div
-     * carries data-home, data-away, data-label, and optional data-pct (for
-     * percentage stats where the max is 100 instead of the max of both values).
-     *
-     * Layout per stat row:
-     *   [home value + bar →]  [LABEL]  [← bar + away value]
-     *
-     * Bar width = (value / maxOfBoth) * 100%, so the larger value always fills
-     * the full column width and the smaller one is proportional.
-     */
-    // Ensure a hex color string always has a # prefix.
-    // The API stores colors without it (e.g. "001A57"), but CSS needs "#001A57".
+    // ─── Box Score Accordion ───
     function ensureHash(color) {
       if (!color) return null;
       return color.startsWith('#') ? color : '#' + color;
     }
 
     function renderBoxScore(container) {
-      const homeColor = ensureHash(container.dataset.homeColor) || '#6366f1';
-      const awayColor = ensureHash(container.dataset.awayColor) || '#ef4444';
-      const rows = container.querySelectorAll('.stat-row');
+      var homeColor = ensureHash(container.dataset.homeColor) || '#6366f1';
+      var awayColor = ensureHash(container.dataset.awayColor) || '#ef4444';
+      var rows = container.querySelectorAll('.stat-row');
 
-      rows.forEach(el => {
-        const homeVal = parseFloat(el.dataset.home) || 0;
-        const awayVal = parseFloat(el.dataset.away) || 0;
-        const label = el.dataset.label || '';
-        const isPct = label.includes('%');
+      rows.forEach(function(el) {
+        var homeVal = parseFloat(el.dataset.home) || 0;
+        var awayVal = parseFloat(el.dataset.away) || 0;
+        var label   = el.dataset.label || '';
+        var isPct   = label.indexOf('%') !== -1;
 
-        // Percentage stats cap at 100; counting stats scale relative to the
-        // larger of the two values so the leader always fills the full bar.
-        const maxVal = isPct ? 100 : Math.max(homeVal, awayVal, 1);
-        const homePct = Math.min((homeVal / maxVal) * 100, 100);
-        const awayPct = Math.min((awayVal / maxVal) * 100, 100);
+        var maxVal  = isPct ? 100 : Math.max(homeVal, awayVal, 1);
+        var homePct = Math.min((homeVal / maxVal) * 100, 100);
+        var awayPct = Math.min((awayVal / maxVal) * 100, 100);
 
-        // Display text: use custom display (e.g. "10-22") if provided, else the raw value
-        const homeDisplay = el.dataset.homeDisplay || (isPct ? homeVal.toFixed(1) + '%' : String(homeVal));
-        const awayDisplay = el.dataset.awayDisplay || (isPct ? awayVal.toFixed(1) + '%' : String(awayVal));
+        var homeDisplay = el.dataset.homeDisplay || (isPct ? homeVal.toFixed(1) + '%' : String(homeVal));
+        var awayDisplay = el.dataset.awayDisplay || (isPct ? awayVal.toFixed(1) + '%' : String(awayVal));
 
-        // Using inline styles for bar track width instead of flex-1 to avoid
-        // potential collapse in nested grid/flex contexts.
-        el.className = 'grid grid-cols-[1fr_40px_1fr] gap-x-3 items-center px-2';
+        var homeWin = homeVal > awayVal;
+        var awayWin = awayVal > homeVal;
+
+        el.className = 'grid grid-cols-[1fr_44px_1fr] gap-x-3 items-center px-2 py-0.5';
         el.innerHTML =
-          `<div style="display:flex; align-items:center; gap:8px;">
-            <span class="text-xs font-medium" style="width:48px; text-align:right; flex-shrink:0;">${homeDisplay}</span>
-            <div style="position:relative; height:20px; border-radius:4px; flex:1 1 0%; min-width:0; overflow:hidden; background-color:rgba(128,128,128,0.15);">
-              <div style="position:absolute; top:0; right:0; height:100%; border-radius:4px; width:${homePct}%; background-color:${homeColor};"></div>
-            </div>
-          </div>
-          <div class="text-center text-xs font-semibold uppercase text-gray-400">${label}</div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <div style="position:relative; height:20px; border-radius:4px; flex:1 1 0%; min-width:0; overflow:hidden; background-color:rgba(128,128,128,0.15);">
-              <div style="position:absolute; top:0; left:0; height:100%; border-radius:4px; width:${awayPct}%; background-color:${awayColor};"></div>
-            </div>
-            <span class="text-xs font-medium" style="width:48px; text-align:left; flex-shrink:0;">${awayDisplay}</span>
-          </div>`;
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<span class="text-xs font-medium ' + (homeWin ? 'font-bold' : 'opacity-60') + '" style="width:52px;text-align:right;flex-shrink:0;">' + homeDisplay + '</span>' +
+            '<div style="position:relative;height:18px;border-radius:4px;flex:1 1 0%;min-width:0;overflow:hidden;background:rgba(128,128,128,0.1);">' +
+              '<div style="position:absolute;top:0;right:0;height:100%;border-radius:4px;width:' + homePct + '%;background:' + homeColor + ';opacity:' + (homeWin ? '1' : '0.4') + ';transition:width 0.4s ease;"></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="text-center text-[10px] font-semibold uppercase tracking-wider opacity-40">' + label + '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<div style="position:relative;height:18px;border-radius:4px;flex:1 1 0%;min-width:0;overflow:hidden;background:rgba(128,128,128,0.1);">' +
+              '<div style="position:absolute;top:0;left:0;height:100%;border-radius:4px;width:' + awayPct + '%;background:' + awayColor + ';opacity:' + (awayWin ? '1' : '0.4') + ';transition:width 0.4s ease;"></div>' +
+            '</div>' +
+            '<span class="text-xs font-medium ' + (awayWin ? 'font-bold' : 'opacity-60') + '" style="width:52px;text-align:left;flex-shrink:0;">' + awayDisplay + '</span>' +
+          '</div>';
       });
 
       container.dataset.rendered = 'true';
     }
 
     function toggleBoxScore(id) {
-      const row = document.getElementById(id);
+      var row = document.getElementById(id);
       if (!row) return;
       row.classList.toggle('hidden');
 
-      // Render progress bars on first open (lazy — avoids computing for all games up front)
       if (!row.classList.contains('hidden')) {
-        const container = row.querySelector('.boxscore-stats');
+        var container = row.querySelector('.boxscore-stats');
         if (container && container.dataset.rendered !== 'true') {
           renderBoxScore(container);
         }
