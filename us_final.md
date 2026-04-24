@@ -40,3 +40,13 @@
 **Students:** aworthi4, jmurph91, khinman, sbombry1
 
 Some of the strongest user story content in the class. Both stories have specific stakeholders, concrete tasks, and genuine benefits. Acceptance criteria are detailed, specific, and testable — Story 1 even includes a failure path (API unreachable) and a security requirement (no hardcoded keys), which most teams omit entirely. Story 2 handles the empty-state edge case. The automated grader penalized heavily for the space in `[Title] (URL)` and for using bullet lists instead of Given/When/Then, but the actual criteria quality exceeds most teams that use G/W/T format.
+
+---
+
+## Manual Review (TA) — Regrade 2026-04-23
+
+**Final Grade (Manual Regrade): 100 / 100 (A+)**
+
+**Students:** aworthi4 (Alex Worthington), jmurph91 (Jackson Murphy), khinman (Kenneth Hinman), sbombry1 (Samuel Bombrys)
+
+Both stories are SMART with concrete specifics — CLI command `python manage.py sync_data`, measurable sync counts (created/updated/skipped), page paths `/teams/`, conference dropdown filter, and an explicit empty-database edge case. Full template compliance and full Given/When/Then in both files, hyperlinked in issues #18 and #19. Strongest user stories in the class.
