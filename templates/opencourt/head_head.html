@@ -257,7 +257,7 @@
   </div>
 
   {% if page_obj %}
-  <div class="flex items-center justify-between mt-4">
+  <div class="flex items-center justify-between mt-4" id="page-nav">
     <span class="text-xs opacity-50">
       Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }} games
     </span>
@@ -391,24 +391,25 @@
   var currentMode  = '{{ mode }}';
 
   // ─── SEARCH ───
-  searchInput.addEventListener('input', function() {
+    searchInput.addEventListener('input', function() {
     var q = searchInput.value.trim().toLowerCase();
+    var pageNav = document.getElementById('page-nav');
 
     if (!q) {
-      // Reset to date-filtered view
       gamesList.style.display = '';
       searchPanel.style.display = 'none';
       noSearchMsg.style.display = 'none';
-
       gameCards.forEach(function(c) { c.style.display = ''; });
       searchCards.forEach(function(c) { c.style.display = 'none'; });
+      if (pageNav) pageNav.style.display = '';
       return;
     }
 
     if (currentMode === 'results') {
-      // Filter within the date-filtered list
+      // Filter the current page's cards directly
       searchPanel.style.display = 'none';
       gamesList.style.display = '';
+      if (pageNav) pageNav.style.display = 'none';
 
       var count = 0;
       gameCards.forEach(function(card) {
@@ -418,13 +419,12 @@
         if (match) count++;
       });
 
-      noSearchMsg.style.display = count === 0 ? '' : 'none';
-      if (count === 0 && noSearchMsg.parentNode !== gamesList) {
-        // Move no-search message into games list for results mode
-      }
+      // Reuse no-games-msg for "no results" feedback
+      var noGames = document.getElementById('no-games-msg');
+      if (noGames) noGames.style.display = count === 0 ? '' : 'none';
 
     } else {
-      // Search across all future games
+      // Upcoming mode — search across all future games in search panel
       gamesList.style.display = 'none';
       searchPanel.style.display = '';
 

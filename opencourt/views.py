@@ -24,6 +24,7 @@
 
 import json
 from datetime import date, datetime, timedelta
+from math import floor
 
 import numpy as np
 from django.db.models import (
@@ -80,7 +81,7 @@ class HomeView(TemplateView):
         # Use.count() — single query each, not loading all objects
         context['total_teams'] = Team.objects.count()
         context['total_conferences'] = Conference.objects.count()
-        context['total_games'] = Game.objects.count()
+        context['total_games'] = (Game.objects.filter(season=current_year).count())
 
         return context
 
@@ -410,13 +411,22 @@ class TeamDetailView(TemplateView):
         off_pts = [round(s.off_points / s.games, 1) if s.off_points and s.games else None for s in season_stats]
         opp_pts = [round(s.opp_points / s.games, 1) if s.opp_points and s.games else None for s in season_stats]
 
-        # --- Pack context ---
-        # The template references these keys directly in {{ var|safe }} tags
-        # inside ApexCharts config objects. Key names are kept short for
-        # readability in the template JS.
         context['team'] = team
         context['season_stats'] = season_stats
         context['stat_years'] = json.dumps(season_labels)
+
+        # Calculate per-game averages for current season display
+        current_stats = team.current_season
+        if current_stats and current_stats.games:
+            context['current_ppg'] = round(current_stats.off_points / current_stats.games, 1) if current_stats.off_points else None
+            context['current_rpg'] = round(current_stats.off_reb_total / current_stats.games, 1) if current_stats.off_reb_total else None
+            context['current_apg'] = round(current_stats.off_assists / current_stats.games, 1) if current_stats.off_assists else None
+            context['current_topg'] = round(current_stats.off_turnovers / current_stats.games, 1) if current_stats.off_turnovers else None
+            context['current_spg'] = round(current_stats.off_steals / current_stats.games, 1) if current_stats.off_steals else None
+            context['current_bpg'] = round(current_stats.off_blocks / current_stats.games, 1) if current_stats.off_blocks else None
+            context['current_opp_ppg'] = round(current_stats.opp_points / current_stats.games, 1) if current_stats.opp_points else None
+            context['current_margin'] = round((current_stats.off_points - current_stats.opp_points) / current_stats.games, 1) if current_stats.off_points and current_stats.opp_points else None
+            context['current_to_ratio'] = round(current_stats.off_turnover_ratio * 100, 1) if current_stats.off_turnover_ratio else None
 
         context['wins'] = json.dumps(wins)
         context['losses'] = json.dumps(losses)
@@ -621,21 +631,32 @@ class UpcomingView(TemplateView):
 
         # ────────────────────────── Build querysets based on mode ───────────────────────────
         if results_mode:
-            # Finished games with results, newest first.
             finished_qs = base_qs("final").filter(home_winner__isnull=False)
 
             if show_all:
+                # Paginate the RAW queryset first (fast — no predictions)
                 paginator = Paginator(finished_qs, 50)
                 page_number = self.request.GET.get('page', 1)
-                games_qs = paginator.get_page(page_number)
-                context['page_obj'] = games_qs
+                page_obj = paginator.get_page(page_number)
+                context['page_obj'] = page_obj
+
+                # Only run predictions on this page's 50 games
+                games = enrich_qs(page_obj.object_list)
             else:
                 games_qs = finished_qs.filter(start_date__date=selected_date)
+                games = enrich_qs(games_qs)
 
-            # In results mode, search pool = same as displayed games
-            # (searching across 5k+ completed games isn't practical)
+            # Accuracy from whatever we just enriched
+            correct = sum(1 for g in games if g.get('prediction_correct') is True)
+            total   = sum(1 for g in games if g.get('prediction_correct') is not None)
+            context['accuracy'] = {
+                'correct': correct,
+                'total': total,
+                'pct': round(correct / total * 100, 1) if total else 0,
+            }
+
+            # Search filters the current page's cards via JS — no separate pool needed
             all_games = []
-            games = enrich_qs(games_qs)
 
         else:
             # Upcoming scheduled games
@@ -648,17 +669,6 @@ class UpcomingView(TemplateView):
 
             all_games = enrich_qs(all_qs)
             games = enrich_qs(games_qs)
-
-        # ─────────────────────── Accuracy summary for results mode ───────────────────────────
-        if results_mode:
-            # Calculate accuracy directly from the database — no need to enrich all games
-            from django.db.models import Count
-            total_games = finished_qs.count()
-            context['accuracy'] = {
-                'correct': 0,
-                'total': total_games,
-                'pct': 0,
-            }
 
         context['mode']  = mode
         context['games'] = games
