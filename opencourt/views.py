@@ -24,6 +24,7 @@
 
 import json
 from datetime import date, datetime, timedelta
+from math import floor
 
 import numpy as np
 from django.db.models import (
@@ -79,7 +80,7 @@ class HomeView(TemplateView):
         # Use.count() — single query each, not loading all objects
         context['total_teams'] = Team.objects.count()
         context['total_conferences'] = Conference.objects.count()
-        context['total_games'] = Game.objects.count()
+        context['total_games'] = (Game.objects.filter(season=current_year).count())
 
         return context
 
