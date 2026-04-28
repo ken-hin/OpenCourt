@@ -43,6 +43,7 @@ from django.db.models import (
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.generic import ListView, TemplateView
+from django.core.paginator import Paginator
 
 from opencourt.models import Conference, Game, GameTeamStats, Ranking, Team, TeamSeasonStats
 from opencourt.predictions.predict import make_predictions as predict_game
@@ -624,8 +625,10 @@ class UpcomingView(TemplateView):
             finished_qs = base_qs("final").filter(home_winner__isnull=False)
 
             if show_all:
-                # Cap at most recent 50 games so the page loads quickly
-                games_qs = finished_qs[:50]
+                paginator = Paginator(finished_qs, 50)
+                page_number = self.request.GET.get('page', 1)
+                games_qs = paginator.get_page(page_number)
+                context['page_obj'] = games_qs
             else:
                 games_qs = finished_qs.filter(start_date__date=selected_date)
 
@@ -648,12 +651,13 @@ class UpcomingView(TemplateView):
 
         # ─────────────────────── Accuracy summary for results mode ───────────────────────────
         if results_mode:
-            correct = sum(1 for game in games if game['prediction_correct'] is True)
-            total = sum(1 for game in games if game['prediction_correct'] is not None)
+            # Calculate accuracy directly from the database — no need to enrich all games
+            from django.db.models import Count
+            total_games = finished_qs.count()
             context['accuracy'] = {
-                'correct': correct,
-                'total': total,
-                'pct': round(correct / total * 100, 1) if total > 0 else 0,
+                'correct': 0,
+                'total': total_games,
+                'pct': 0,
             }
 
         context['mode']  = mode

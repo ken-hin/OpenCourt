@@ -256,6 +256,29 @@
     {% endfor %}
   </div>
 
+  {% if page_obj %}
+  <div class="flex items-center justify-between mt-4">
+    <span class="text-xs opacity-50">
+      Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }} games
+    </span>
+    <div class="join">
+      {% if page_obj.has_previous %}
+      <a href="?mode=results&date=all&page={{ page_obj.previous_page_number }}" class="btn btn-sm join-item btn-ghost">
+        <i class="fa-solid fa-chevron-left"></i> Prev
+      </a>
+      {% endif %}
+      <span class="btn btn-sm join-item btn-ghost no-animation">
+        {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+      </span>
+      {% if page_obj.has_next %}
+      <a href="?mode=results&date=all&page={{ page_obj.next_page_number }}" class="btn btn-sm join-item btn-ghost">
+        Next <i class="fa-solid fa-chevron-right"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   {# ═══════════════════════ SEARCH RESULTS POOL ═══════════════════════ #}
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 hidden" id="search-results">
 
@@ -364,7 +387,7 @@
   var noSearchMsg  = document.getElementById('no-search-msg');
   var noSearchText = document.getElementById('no-search-text');
   var searchCards  = document.querySelectorAll('.search-card');
-  var gameCards    = document.querySelectorAll('#games-list.game-card');
+  var gameCards = document.querySelectorAll('#games-list .game-card');
   var currentMode  = '{{ mode }}';
 
   // ─── SEARCH ───

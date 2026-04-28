@@ -244,43 +244,43 @@
             {% if stats.off_points and stats.games %}
             <div class="bg-base-300 rounded-box p-3 text-center">
               <div class="text-xs uppercase tracking-wider opacity-50">PPG</div>
-              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_points|floatformat:0 }}</div>
+              <div class="text-xl font-bold font-mono mt-1">{% widthratio stats.off_points stats.games 1 %}</div>
             </div>
             {% endif %}
             {% if stats.off_reb_total and stats.games %}
             <div class="bg-base-300 rounded-box p-3 text-center">
               <div class="text-xs uppercase tracking-wider opacity-50">RPG</div>
-              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_reb_total|floatformat:0 }}</div>
+              <div class="text-xl font-bold font-mono mt-1">{% widthratio stats.off_reb_total stats.games 1 %}</div>
             </div>
             {% endif %}
             {% if stats.off_assists and stats.games %}
             <div class="bg-base-300 rounded-box p-3 text-center">
               <div class="text-xs uppercase tracking-wider opacity-50">APG</div>
-              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_assists|floatformat:0 }}</div>
+              <div class="text-xl font-bold font-mono mt-1">{% widthratio stats.off_assists stats.games 1 %}</div>
             </div>
             {% endif %}
             {% if stats.off_turnovers and stats.games %}
             <div class="bg-base-300 rounded-box p-3 text-center">
               <div class="text-xs uppercase tracking-wider opacity-50">TOPG</div>
-              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_turnovers|floatformat:0 }}</div>
+              <div class="text-xl font-bold font-mono mt-1">{% widthratio stats.off_turnovers stats.games 1 %}</div>
             </div>
             {% endif %}
             {% if stats.off_steals and stats.games %}
             <div class="bg-base-300 rounded-box p-3 text-center">
               <div class="text-xs uppercase tracking-wider opacity-50">SPG</div>
-              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_steals|floatformat:0 }}</div>
+              <div class="text-xl font-bold font-mono mt-1">{% widthratio stats.off_steals stats.games 1 %}</div>
             </div>
             {% endif %}
             {% if stats.off_blocks and stats.games %}
             <div class="bg-base-300 rounded-box p-3 text-center">
               <div class="text-xs uppercase tracking-wider opacity-50">BPG</div>
-              <div class="text-xl font-bold font-mono mt-1">{{ stats.off_blocks|floatformat:0 }}</div>
+              <div class="text-xl font-bold font-mono mt-1">{% widthratio stats.off_blocks stats.games 1 %}</div>
             </div>
             {% endif %}
             {% if stats.opp_points and stats.games %}
             <div class="bg-base-300 rounded-box p-3 text-center">
               <div class="text-xs uppercase tracking-wider opacity-50">Opp PPG</div>
-              <div class="text-xl font-bold font-mono mt-1 text-error">{{ stats.opp_points|floatformat:0 }}</div>
+              <div class="text-xl font-bold font-mono mt-1 text-error">{% widthratio stats.opp_points stats.games 1 %}</div>
             </div>
             {% endif %}
             {% if stats.off_points and stats.opp_points %}
@@ -288,7 +288,7 @@
               <div class="text-xs uppercase tracking-wider opacity-50">Margin</div>
               <div class="text-xl font-bold font-mono mt-1
                 {% if stats.point_margin > 0 %}text-success{% elif stats.point_margin < 0 %}text-error{% endif %}">
-                {% if stats.point_margin > 0 %}+{% endif %}{{ stats.point_margin|floatformat:1 }}
+                {% if stats.point_margin > 0 %}+{% endif %}{% widthratio stats.point_margin stats.games 1 %}
               </div>
             </div>
             {% endif %}
