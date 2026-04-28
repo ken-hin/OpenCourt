@@ -50,25 +50,53 @@
 
 <body>
   <!-- Navbar -->
-  <nav class="navbar bg-opacity-0 fixed backdrop-blur-2xl px-10 shadow top-0 z-10">
+  <nav class="navbar bg-opacity-0 fixed backdrop-blur-2xl px-4 sm:px-10 shadow top-0 z-10">
     <div class="flex-1">
       <a href="{% url 'opencourt:home' %}" class="text-xl font-bold">OpenCourt</a>
     </div>
-    <div class="flex gap-4">
-      <a href="{% url 'opencourt:teams' %}" class="hover:text-primary">Teams</a>
-      <a href="{% url 'opencourt:rankings' %}" class="hover:text-primary">Rankings</a>
-      <a href="{% url 'opencourt:conferences' %}" class="hover:text-primary">Conferences</a>
-      <a href="{% url 'opencourt:upcoming' %}" class="hover:text-primary">Upcoming Games</a>
-      <a href="{% url 'opencourt:about' %}" class="hover:text-primary">About</a>
+    <div class="flex-none">
+      <!-- Desktop Navigation -->
+      <div class="hidden md:flex gap-4">
+        <a href="{% url 'opencourt:teams' %}" class="hover:text-primary">Teams</a>
+        <a href="{% url 'opencourt:rankings' %}" class="hover:text-primary">Rankings</a>
+        <a href="{% url 'opencourt:conferences' %}" class="hover:text-primary">Conferences</a>
+        <a href="{% url 'opencourt:upcoming' %}" class="hover:text-primary">Predictions</a>
+        <a href="{% url 'opencourt:about' %}" class="hover:text-primary">About</a>
+      </div>
+      <!-- Mobile Menu Button -->
+      <div class="md:hidden">
+        <button class="btn btn-ghost btn-sm" onclick="toggleMobileMenu()">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+      </div>
+    </div>
+    <!-- Mobile Menu Dropdown -->
+    <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 right-0 bg-base-100 shadow-lg border-t border-base-300">
+      <div class="flex flex-col p-4 gap-2">
+        <a href="{% url 'opencourt:teams' %}" class="btn btn-ghost btn-sm justify-start">Teams</a>
+        <a href="{% url 'opencourt:rankings' %}" class="btn btn-ghost btn-sm justify-start">Rankings</a>
+        <a href="{% url 'opencourt:conferences' %}" class="btn btn-ghost btn-sm justify-start">Conferences</a>
+        <a href="{% url 'opencourt:upcoming' %}" class="btn btn-ghost btn-sm justify-start">Predictions</a>
+        <a href="{% url 'opencourt:about' %}" class="btn btn-ghost btn-sm justify-start">About</a>
+      </div>
     </div>
   </nav>
   <!-- Main content -->
-  <main class="pt-20">
+  <main class="pt-20 mx-4 sm:mx-10 pb-20">
     {% block content %}{% endblock %}
   </main>
 
-  <footer>
-    <!-- Footer will be built here -->
+  <footer class="footer footer-center p-6 bg-base-200 text-base-content border-t border-base-300">
+    <div class="container mx-auto flex flex-col gap-3 text-center md:flex-row md:items-center md:justify-between">
+      <p>© {% now "Y" %} OpenCourt. Free college basketball analytics.</p>
+      <div class="flex flex-wrap justify-center gap-4">
+        <a href="{% url 'opencourt:home' %}" class="link link-hover">Home</a>
+        <a href="{% url 'opencourt:teams' %}" class="link link-hover">Teams</a>
+        <a href="{% url 'opencourt:rankings' %}" class="link link-hover">Rankings</a>
+        <a href="{% url 'opencourt:conferences' %}" class="link link-hover">Conferences</a>
+        <a href="{% url 'opencourt:about' %}" class="link link-hover">About</a>
+      </div>
+    </div>
   </footer>
 
   {% block extra_js %}

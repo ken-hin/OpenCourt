@@ -23,17 +23,29 @@
 #     '_current_stats') so stats are loaded in bulk rather than per-team.
 
 import json
-from datetime import date, timedelta
-from django.db import models
-from django.db.models import Prefetch, Q, Count, Avg, Sum
 from datetime import date, datetime, timedelta
+from math import floor
+
 import numpy as np
-from django.db.models import Prefetch, Q
-from django.views.generic import TemplateView, ListView
-from django.db.models import Case, When, Value, OuterRef, Subquery, FloatField, F, ExpressionWrapper
+from django.db.models import (
+  Avg,
+  Case,
+  Count,
+  ExpressionWrapper,
+  F,
+  FloatField,
+  OuterRef,
+  Prefetch,
+  Q,
+  Subquery,
+  Sum,
+  When
+)
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from opencourt.models import Team, Conference, TeamSeasonStats, Game, GameTeamStats, Ranking
+from django.views.generic import ListView, TemplateView
+
+from opencourt.models import Conference, Game, GameTeamStats, Ranking, Team, TeamSeasonStats
 from opencourt.predictions.predict import make_predictions as predict_game
 
 class HomeView(TemplateView):
@@ -68,10 +80,9 @@ class HomeView(TemplateView):
         # Use.count() — single query each, not loading all objects
         context['total_teams'] = Team.objects.count()
         context['total_conferences'] = Conference.objects.count()
-        context['total_games'] = Game.objects.count()
+        context['total_games'] = (Game.objects.filter(season=current_year).count())
 
         return context
-
 
 class AboutView(TemplateView):
     """Static about/info page. No model data needed."""
@@ -80,10 +91,10 @@ class AboutView(TemplateView):
 class TeamListView(ListView):
     model = Team
     template_name = 'opencourt/teams.html'
-    
+
     def get_queryset(self):
         current_year = date.today().year
-        
+
         qs = (
             Team.objects.select_related('conference').prefetch_related(
                 Prefetch(
@@ -107,7 +118,7 @@ class TeamListView(ListView):
         context = super().get_context_data(**kwargs)
         context['conference_list'] = Conference.objects.order_by('abbrv')
         return context
-    
+
 class ConferenceListView(ListView):
     """
     Two-panel conference browser: left sidebar of conference buttons, right
@@ -153,6 +164,7 @@ class ConferenceListView(ListView):
         total_wins=Sum('teams__season_stats__wins', filter=Q(teams__season_stats__season=current_year), distinct=True),
         total_losses=Sum('teams__season_stats__losses', filter=Q(teams__season_stats__season=current_year), distinct=True),
       ).all()
+
 class RankingsListView(TemplateView):
     """
     Renders dual-poll rankings page (AP Top 25 + Coaches Poll side by side)
@@ -254,6 +266,7 @@ class RankingsListView(TemplateView):
         context['selected_week'] = selected_week
         context['conference_list'] = Conference.objects.order_by('abbrv')
         return context
+
 class TeamDetailView(TemplateView):
     """
     Detail page for a single team, showing historical stats, ApexCharts
@@ -397,13 +410,22 @@ class TeamDetailView(TemplateView):
         off_pts = [round(s.off_points / s.games, 1) if s.off_points and s.games else None for s in season_stats]
         opp_pts = [round(s.opp_points / s.games, 1) if s.opp_points and s.games else None for s in season_stats]
 
-        # --- Pack context ---
-        # The template references these keys directly in {{ var|safe }} tags
-        # inside ApexCharts config objects. Key names are kept short for
-        # readability in the template JS.
         context['team'] = team
         context['season_stats'] = season_stats
         context['stat_years'] = json.dumps(season_labels)
+
+        # Calculate per-game averages for current season display
+        current_stats = team.current_season
+        if current_stats and current_stats.games:
+            context['current_ppg'] = round(current_stats.off_points / current_stats.games, 1) if current_stats.off_points else None
+            context['current_rpg'] = round(current_stats.off_reb_total / current_stats.games, 1) if current_stats.off_reb_total else None
+            context['current_apg'] = round(current_stats.off_assists / current_stats.games, 1) if current_stats.off_assists else None
+            context['current_topg'] = round(current_stats.off_turnovers / current_stats.games, 1) if current_stats.off_turnovers else None
+            context['current_spg'] = round(current_stats.off_steals / current_stats.games, 1) if current_stats.off_steals else None
+            context['current_bpg'] = round(current_stats.off_blocks / current_stats.games, 1) if current_stats.off_blocks else None
+            context['current_opp_ppg'] = round(current_stats.opp_points / current_stats.games, 1) if current_stats.opp_points else None
+            context['current_margin'] = round((current_stats.off_points - current_stats.opp_points) / current_stats.games, 1) if current_stats.off_points and current_stats.opp_points else None
+            context['current_to_ratio'] = round(current_stats.off_turnover_ratio * 100, 1) if current_stats.off_turnover_ratio else None
 
         context['wins'] = json.dumps(wins)
         context['losses'] = json.dumps(losses)
@@ -420,6 +442,7 @@ class TeamDetailView(TemplateView):
         context['off_pts'] = json.dumps(off_pts)
         context['opp_pts'] = json.dumps(opp_pts)
         return context
+
 class UpcomingView(TemplateView):
     """
     Upcoming games page with head-to-head stat comparison.

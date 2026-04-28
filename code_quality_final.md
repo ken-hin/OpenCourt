@@ -27,3 +27,13 @@
 **Students:** aworthi4, jmurph91, khinman, sbombry1
 
 Best documentation in the class — models, views, and service modules all have strong file headers and function/class docstrings. Django architecture is solid with proper layering (models, views, services, predictions, management/commands). The service modules and predictions package demonstrate good architectural thinking and separation of concerns. The main issue is that `views.py` and `models.py` have grown large and could benefit from being split by feature/domain, but this is a natural consequence of an active, feature-rich project.
+
+---
+
+## Manual Review (TA) — Regrade 2026-04-23
+
+**Final Grade (Manual Regrade): 100 / 100 (A+)**
+
+**Students:** aworthi4 (Alex Worthington), jmurph91 (Jackson Murphy), khinman (Kenneth Hinman), sbombry1 (Samuel Bombrys)
+
+Best-documented codebase in the class — docstrings on every function and class explaining parameters, return values, and error conditions. Textbook Django architecture (6 models, 7 class-based views, service/prediction/management command layers cleanly separated). Added an XGBoost ML pipeline in Sprint 4 cleanly isolated from app logic. PEP 8 compliant throughout, environment-based config, no hardcoded secrets. Nothing substantive missing under the rubric.
