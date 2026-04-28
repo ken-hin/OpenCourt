@@ -26,3 +26,19 @@
 
 
 // Global utilities will go here
+
+// Mobile menu toggle function
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobile-menu');
+  menu.classList.toggle('hidden');
+}
+
+// Close mobile menu when clicking outside
+document.addEventListener('click', function(event) {
+  const menu = document.getElementById('mobile-menu');
+  const menuButton = event.target.closest('button[onclick="toggleMobileMenu()"]');
+
+  if (!menuButton && !menu.contains(event.target)) {
+    menu.classList.add('hidden');
+  }
+});
