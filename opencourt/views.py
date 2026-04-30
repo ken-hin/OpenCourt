@@ -407,7 +407,9 @@ class TeamDetailView(TemplateView):
         off_ft_rate = [round(s.off_ft_rate, 1)  if s.off_ft_rate else None for s in season_stats]
 
         # Additional shooting & scoring (extend as the team view is built out)
+        off_fg_pct = [round(s.off_fg_pct, 1) if s.off_fg_pct else None for s in season_stats]
         off_3pt_pct = [round(s.off_3pt_pct, 1) if s.off_3pt_pct else None for s in season_stats]
+        off_ft_pct = [round(s.off_ft_pct, 1) if s.off_ft_pct else None for s in season_stats]
         off_pts = [round(s.off_points / s.games, 1) if s.off_points and s.games else None for s in season_stats]
         opp_pts = [round(s.opp_points / s.games, 1) if s.opp_points and s.games else None for s in season_stats]
 
@@ -439,7 +441,9 @@ class TeamDetailView(TemplateView):
         context['oreb_pct'] = json.dumps(off_oreb_pct)
         context['ft_rate'] = json.dumps(off_ft_rate)
 
+        context['off_fg_pct'] = json.dumps(off_fg_pct)
         context['three_pt_pct'] = json.dumps(off_3pt_pct)
+        context['off_ft_pct'] = json.dumps(off_ft_pct)
         context['off_pts'] = json.dumps(off_pts)
         context['opp_pts'] = json.dumps(opp_pts)
         return context
