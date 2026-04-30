@@ -14,6 +14,8 @@ from .sync import (                         # noqa: F401
     sync_all_rankings,
     sync_games,
     sync_game_team_stats,
+    sync_games_historical,
+    sync_game_team_stats_historical,
 )
 
 from .update import (                       # noqa: F401

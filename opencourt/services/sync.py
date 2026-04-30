@@ -40,6 +40,7 @@ from .helpers import (
     CURRENT_YEAR,
     STATS_START_YEAR,
     RANKINGS_START_YEAR,
+    GAMES_HISTORY_START_YEAR,
     BETWEEN_CALLS_DELAY,
     _build_team_lookup,
     _build_conf_lookup,
@@ -467,4 +468,199 @@ def sync_game_team_stats():
     logger.info(
         "sync_game_team_stats complete — %d created, %d updated, %d skipped, %d ignored.",
         created_count, updated_count, skipped_count, ignored_count
+    )
+
+
+def sync_games_historical():
+    """
+    Fetch game results for every season from GAMES_HISTORY_START_YEAR through
+    CURRENT_YEAR and upsert into the Game model.
+
+    Mirrors sync_games() but loops across the last 3 seasons. Each season is
+    still split into monthly windows (Nov->May) via _build_game_date_ranges()
+    to stay under the API's 3,000-row cap per call.
+
+    This is intended for one-time historical backfills. For incremental updates
+    to the current season, use sync_games() or update_games().
+
+    Called by: python manage.py sync_games_historical (or sync_data --historical)
+    Depends on: sync_teams() and sync_conferences() must have run first.
+    """
+    team_lookup = _build_team_lookup()
+    conf_lookup = _build_conf_lookup()
+
+    if not team_lookup:
+        logger.warning("sync_games_historical: no teams found — run sync_teams first.")
+        return
+
+    seasons = range(GAMES_HISTORY_START_YEAR, CURRENT_YEAR + 1)
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+    ignored_count = 0
+
+    with logging_redirect_tqdm():
+        for season in tqdm(seasons, desc='Syncing historical games', unit='season', ncols=80):
+            date_ranges = _build_game_date_ranges(season)
+
+            games_data = []
+            for dr in date_ranges:
+                batch = fetch_games_bulk(season, **dr)
+                if batch:
+                    logger.info("Fetched %d games for season %s range %s.", len(batch), season, dr)
+                    games_data.extend(batch)
+                time.sleep(BETWEEN_CALLS_DELAY)
+
+            if not games_data:
+                logger.warning("sync_games_historical: no games returned for season %s — skipping.", season)
+                continue
+
+            for game in games_data:
+                game_dict = game.to_dict()
+
+                home_school = (game_dict.get('homeTeam') or '').lower()
+                away_school = (game_dict.get('awayTeam') or '').lower()
+                home_team_obj = team_lookup.get(home_school)
+                away_team_obj = team_lookup.get(away_school)
+
+                if home_team_obj is None or away_team_obj is None:
+                    ignored_count += 1
+                    logger.debug(
+                        "Ignoring game %s (season %s): home='%s' away='%s' — one or both not in team table.",
+                        game_dict.get('id'), season, home_school, away_school
+                    )
+                    continue
+
+                home_conf = conf_lookup.get((game_dict.get('homeConference') or '').lower())
+                away_conf = conf_lookup.get((game_dict.get('awayConference') or '').lower())
+
+                try:
+                    game_obj, created = Game.objects.update_or_create(
+                        source_id=str(game_dict['id']),
+                        defaults=_build_game_defaults(game_dict, home_team_obj, away_team_obj, home_conf, away_conf)
+                    )
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+
+                except (IntegrityError, KeyError) as exc:
+                    skipped_count += 1
+                    logger.warning("Failed to upsert game %s (season %s): %s", game_dict.get('id'), season, exc)
+
+    logger.info(
+        "sync_games_historical complete — %d created, %d updated, %d skipped, %d ignored (across %d seasons).",
+        created_count, updated_count, skipped_count, ignored_count, len(seasons)
+    )
+
+
+def sync_game_team_stats_historical():
+    """
+    Fetch per-team box score stats for every season from GAMES_HISTORY_START_YEAR
+    through CURRENT_YEAR and upsert into the GameTeamStats model.
+
+    Mirrors sync_game_team_stats() but loops across the last 3 seasons. Each
+    season is split into monthly windows (Nov->May) via _build_game_date_ranges()
+    to stay under the API's 3,000-row cap per call (each game produces two rows,
+    one per team, so the effective cap is ~1,500 games/call).
+
+    This is intended for one-time historical backfills. For incremental updates
+    to the current season, use sync_game_team_stats() or update_game_team_stats().
+
+    Called by: python manage.py sync_games_historical (or sync_data --historical)
+    Depends on: sync_games_historical() must have run first to populate Game rows
+                across the historical range.
+    """
+    team_lookup = _build_team_lookup()
+    # Build a lookup of every Game row in the historical range so we can FK-resolve
+    # stats rows to Games regardless of which season they came from.
+    game_lookup = {
+        g.source_id: g
+        for g in Game.objects.filter(
+            season__gte=GAMES_HISTORY_START_YEAR,
+            season__lte=CURRENT_YEAR,
+        )
+    }
+
+    if not team_lookup:
+        logger.warning("sync_game_team_stats_historical: no teams found — run sync_teams first.")
+        return
+    if not game_lookup:
+        logger.warning(
+            "sync_game_team_stats_historical: no historical games found — run sync_games_historical first."
+        )
+        return
+
+    seasons = range(GAMES_HISTORY_START_YEAR, CURRENT_YEAR + 1)
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+    ignored_count = 0
+
+    with logging_redirect_tqdm():
+        for season in tqdm(seasons, desc='Syncing historical game team stats', unit='season', ncols=80):
+            date_ranges = _build_game_date_ranges(season)
+
+            stats_data = []
+            for dr in date_ranges:
+                batch = fetch_game_team_stats_bulk(season, **dr)
+                if batch:
+                    logger.info(
+                        "Fetched %d game team stat rows for season %s range %s.",
+                        len(batch), season, dr
+                    )
+                    stats_data.extend(batch)
+                time.sleep(BETWEEN_CALLS_DELAY)
+
+            if not stats_data:
+                logger.warning(
+                    "sync_game_team_stats_historical: no data returned for season %s — skipping.",
+                    season
+                )
+                continue
+
+            for stat in stats_data:
+                stat_dict = stat.to_dict()
+
+                game_id_str = str(stat_dict.get('gameId', ''))
+                game_obj = game_lookup.get(game_id_str)
+                if game_obj is None:
+                    ignored_count += 1
+                    logger.debug(
+                        "Ignoring game team stats for unknown game ID %s (season %s).",
+                        game_id_str, season
+                    )
+                    continue
+
+                school = (stat_dict.get('team') or '').lower()
+                team_obj = team_lookup.get(school)
+                if team_obj is None:
+                    ignored_count += 1
+                    logger.debug(
+                        "Ignoring game team stats for non-D1 school '%s' (season %s).",
+                        school, season
+                    )
+                    continue
+
+                try:
+                    stat_obj, created = GameTeamStats.objects.update_or_create(
+                        game=game_obj,
+                        team=team_obj,
+                        defaults=_build_game_team_stats_defaults(stat_dict)
+                    )
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+
+                except (IntegrityError, KeyError) as exc:
+                    skipped_count += 1
+                    logger.warning(
+                        "Failed to upsert game team stats for '%s' game %s (season %s): %s",
+                        school, game_id_str, season, exc
+                    )
+
+    logger.info(
+        "sync_game_team_stats_historical complete — %d created, %d updated, %d skipped, %d ignored (across %d seasons).",
+        created_count, updated_count, skipped_count, ignored_count, len(seasons)
     )
