@@ -1,0 +1,203 @@
+From watching others:
+
+intro
+proj decription overview
+overview of sprints
+tech stack 
+feature talk
+  - prediction model?
+  - database?
+  - api?
+Hosting solution?
+website walkthrough
+issues faced? 
+  - solved or compromise 
+invite to visit site
+scrapped features / what we didnt get to 
+original plan goals did we meet 
+
+The AI Plan:
+
+1. Intro + Hook                          (0:30)
+   - Name, project name, one-liner
+
+2. Project Overview + Goals              (1:00)
+   - What is OpenCourt, what were the original goals
+
+3. Tech Stack + Architecture             (1:00)
+   - Stack list + pipeline diagram
+   - "Data flows from API → DB → ML model → UI"
+   - This replaces separate DB/API/model sections
+
+4. The Prediction Model                  (1:30)
+   - What features, how it works, why those stats
+   - This deserves its own section — it's the core
+
+5. Sprint Overview                       (0:30)
+   - One timeline slide, hit the highlights
+   - "Sprint 1: data pipeline. Sprint 2: predictions.
+     Sprint 3: UI. Sprint 4: polish + hosting."
+
+6. Hosting Solution                      (0:30)
+   - Where it lives, any deployment challenges
+
+7. Live Demo / Walkthrough               (3:00)
+   - THE MAIN EVENT — show every page working
+
+8. Issues Faced                          (1:00)
+   - Performance (enriching 5k games)
+   - Tailwind compilation
+   - Null data edge cases
+   - For each: solved or compromised
+
+9. Scrapped Features / What We Didn't    (0:30)
+    Get To
+   - Stored predictions, user accounts, etc.
+
+10. Original Goals — Did We Meet Them?   (0:30)
+    + Invite to Visit
+    - Score yourself honestly
+    - Drop the URL
+    - Questions?
+
+Slide 1 — Title
+On screen:
+
+OpenCourt
+Machine Learning Predictions for NCAA Basketball
+
+Jackson Murphy · University of Tennessee · Spring 2026
+
+Say (~20s):
+
+"OpenCourt is a full-stack web application that uses machine learning to predict the outcomes of NCAA Division I men's basketball games. It pulls live data from an external API, runs predictions through a trained model, and presents everything through an interactive dashboard."
+
+Slide 2 — The Hook
+On screen:
+
+🏀 5,000+ games per season. Can a model pick the winners?
+
+NCAA basketball is one of the hardest sports to predict — upsets, Cinderella runs, March Madness
+Similar ML approaches achieve ~67–75% accuracy 2 3
+OpenCourt: Can we build a usable, real-time prediction tool?
+Say (~40s):
+
+"College basketball is notoriously unpredictable — that's what makes March Madness exciting. Research shows ML models typically achieve around 67 to 75 percent accuracy on game outcome prediction. I wanted to see if I could build something that not only predicts games but presents those predictions in a way that's actually useful — a real application, not just a Jupyter notebook."
+
+Slide 3 — Problem & Motivation
+On screen:
+
+Problem: Existing prediction tools are either academic papers with no UI, or black-box betting sites with no transparency.
+
+Goal: Build an end-to-end system that:
+
+Ingests real NCAA data automatically
+Predicts game outcomes using ML
+Displays predictions alongside actual results
+Tracks model accuracy over time
+Say (~1 min):
+
+"Most basketball prediction work lives in research papers or Kaggle notebooks. There's no accessible tool that lets you browse upcoming games, see what the model thinks, and then come back later to check if it was right. That's the gap OpenCourt fills — it's a complete pipeline from data ingestion to prediction to accountability."
+
+Slide 4 — Architecture & Tech Stack
+On screen: (A simple flow diagram — I can generate this for you)
+
+ESPN/CBS API → Django ORM → PostgreSQL
+                   ↓
+             ML Model (scikit-learn / NumPy)
+                   ↓
+             Django Views → Tailwind/DaisyUI Templates
+Stack: Python · Django 6 · Tailwind CSS v4 · DaisyUI v5 · ApexCharts · NumPy
+
+Say (~1 min):
+
+"The architecture is straightforward. Management commands pull game schedules, scores, and team season statistics from a sports API into a Django database. When a user visits the matchups page, the view loads both teams' stats, feeds them into the prediction model, and renders the result. The frontend uses Tailwind CSS with DaisyUI components for a clean, responsive interface, and ApexCharts for historical stat visualizations on team detail pages."
+
+Slide 5 — The ML Model
+On screen:
+
+Input Features (per team):
+
+Offensive/Defensive efficiency ratings
+FG%, 3PT%, FT%
+Rebounds, assists, steals, blocks, turnovers (per game)
+Turnover ratio, effective FG%, offensive rebound %
+Home court advantage flag
+Model: Binary classifier → Home win (1) or Away win (0)
+
+Key insight: Tempo-free stats (per-possession) are more predictive than raw totals 2
+
+Say (~1:30):
+
+"The model takes each team's season averages — things like points per game, shooting percentages, rebounding, turnovers — and computes the difference between the two teams. It also factors in home court advantage. These features are fed into a binary classifier that outputs whether the home team wins or loses. I focused on tempo-free statistics where possible, because research shows these are more predictive than raw box score numbers — they normalize for pace of play, so a team that plays slow isn't penalized compared to a team that plays fast. The model runs in real-time on each page load, which created some interesting performance challenges I'll talk about."
+
+Slides 6–8 — LIVE DEMO (3:30)
+Say before switching to browser:
+
+"Let me show you the actual application."
+
+Demo Script:
+Home page (~20s) — "Here's the landing page. Top 5 teams by win percentage, conference links, season totals."
+
+Teams page (~20s) — "All 350+ D1 teams, searchable. Click into one..."
+
+Team Detail page (~40s) — "This is Duke's page. Current season per-game averages up top — points, rebounds, assists. Below that, historical charts powered by ApexCharts showing win percentage, efficiency ratings, and Four Factors trends across multiple seasons. And the full schedule with expandable box scores."
+
+Matchups — Upcoming mode (~30s) — "This is the main prediction page. Each card shows two teams, their records, and the model's predicted winner in the badge. You can expand any card to see the head-to-head stat comparison with those visual bars. Date tabs let you filter by day."
+
+Matchups — Results mode (~40s) — "Switch to Results, and now you see completed games with actual scores. The green bar means the model got it right, red means it didn't. The accuracy banner shows the hit rate for this page. Pagination lets you step through all completed games — each page only runs 50 predictions so it loads fast."
+
+Search (~20s) — "The search bar queries all games across the database via an AJAX endpoint — no page reload, and it doesn't need to run the ML model, so it's instant."
+
+Rankings (~20s) — "And here are the AP and Coaches polls side by side, navigable by week."
+
+Slide 7 — Results & Model Performance
+On screen:
+
+Metric	Value
+Games predicted	~5,000+
+Accuracy (current page sample)	~XX% (fill in your actual number)
+Typical ML baselines	67–75% 2 3
+What the model gets right: Games with clear stat advantages What it misses: Upsets, injury impacts, momentum/streaks
+
+Say (~1 min):
+
+"Across the season, the model's accuracy falls in line with published research — around the 65 to 75 percent range. It's strongest when there's a clear statistical mismatch between teams. Where it struggles is the same place every model struggles — upsets, injuries, and intangibles like momentum. The model doesn't know a team's best player got hurt yesterday."
+
+Slide 8 — Challenges & Lessons Learned
+On screen:
+
+Performance — Enriching 5,000 games with predictions = too slow → Paginate first, predict only 50
+Tailwind v4 — New @source directive; classes not compiling until paths were configured
+Data quality — Some teams have null stats → defensive try/except around predictions
+Full-stack complexity — Django ORM, ML pipeline, responsive UI, JS search — all connected
+Say (~30s):
+
+"The biggest technical challenge was performance. Originally the results page tried to run the ML model on every completed game at once — thousands of predictions on a single page load. The fix was to paginate the raw database query first, then only enrich the current page's 50 games. Search uses a lightweight AJAX endpoint that queries the database directly without running predictions. I also ran into Tailwind v4 compilation issues, null data edge cases, and the general challenge of keeping a full-stack app coherent across the backend, ML layer, and frontend."
+
+Slide 9 — Future Work
+On screen:
+
+Store predictions in the database — compute once, not on every page load
+Full-season accuracy tracking — aggregate stats without re-running the model
+More features — strength of schedule, injuries, recruiting rankings 4
+Model improvements — ensemble methods, confidence scores
+User accounts — save favorite teams, custom alerts
+Say (~20s):
+
+"If I had more time, the first thing I'd do is persist predictions to the database so accuracy can be computed with a single query. Beyond that — richer features like strength of schedule, model ensembling, and user accounts."
+
+Slide 10 — Closing
+On screen:
+
+OpenCourt
+Full-stack NCAA basketball prediction platform
+
+Built with: Django · Tailwind · DaisyUI · NumPy · ApexCharts
+
+Questions?
+
+Say (~10s):
+
+"That's OpenCourt — a full-stack machine learning application for NCAA basketball prediction. I'm happy to take any questions."
+
