@@ -6,7 +6,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8 max-w-7xl">
+<div class="mx-auto px-2 py-8 max-w-[1800px]">
 
   {# ═══════════════════════ HEADER ═══════════════════════ #}
   <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
@@ -90,7 +90,7 @@
   </div>
 
   {# ═══════════════════════ GAME CARDS (date-filtered) ═══════════════════════ #}
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="games-list">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" id="games-list">
 
     {% for item in games %}
     <div class="game-card card bg-base-200 shadow-md hover:shadow-lg transition-shadow overflow-hidden"
@@ -101,67 +101,72 @@
       <div class="h-1 w-full {% if item.prediction_correct %}bg-success{% else %}bg-error{% endif %}"></div>
       {% endif %}
 
-      <div class="card-body p-4">
+      <div class="card-body p-3">
 
         {# Top row: date + venue + prediction badge #}
-        <div class="flex items-center justify-between mb-3">
-          <div class="flex items-center gap-2 text-xs opacity-60">
-            <i class="fa-regular fa-clock"></i>
-            <span>{{ item.game.start_date|date:"D, M j · g:i A" }}</span>
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-1.5 text-[11px] opacity-60">
+            <i class="fa-regular fa-clock text-[10px]"></i>
+            <span>{{ item.game.start_date|date:"M j · g:i A" }}</span>
           </div>
           <div class="flex items-center gap-2">
             {% if item.game.neutral_site %}
-            <span class="badge badge-ghost badge-xs">Neutral</span>
+            <span class="badge badge-ghost badge-xs">N</span>
             {% endif %}
             {% if item.game.venue %}
-            <span class="text-xs opacity-40 hidden sm:inline">{{ item.game.venue }}</span>
+            <span class="text-[10px] opacity-40 hidden xl:inline truncate max-w-[120px]">{{ item.game.venue }}</span>
             {% endif %}
           </div>
         </div>
 
         {# ── Matchup Row ── #}
-        <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div class="grid grid-cols-[1fr_auto_1fr] gap-0 items-center">
 
           {# Home team #}
           <a href="{% url 'opencourt:team-detail' item.home_team.slug %}"
-             class="flex items-center gap-3 group min-w-0" onclick="event.stopPropagation()">
+             class="flex items-center gap-2 group min-w-0" onclick="event.stopPropagation()">
             {% if item.home_team.primary_color %}
-            <div class="w-2 h-10 rounded-full flex-shrink-0"
+            <div class="w-1.5 h-9 rounded-full flex-shrink-0"
                  style="background-color: {{ item.home_team.primary_color }};"></div>
             {% endif %}
-            <div class="min-w-0">
-              <div class="font-bold text-lg leading-tight group-hover:text-primary transition-colors truncate">
+            <div class="min-w-0 flex flex-col items-center">
+              <img
+              src="https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/{{ item.home_team.source_id|default:item.home_team.id }}.png"
+              alt="{{ item.home_team.school }} logo"
+              class="w-12 h-12 rounded-md object-contain bg-white p-1.5 shadow-sm flex-shrink-0"
+              onerror="this.style.display='none'"
+              />
+              <div class="font-bold text-xs text-center leading-tight group-hover:text-primary transition-colors truncate w-full mt-1">
                 {{ item.home_team.school }}
               </div>
-              <div class="flex items-center gap-2 mt-0.5">
-                <span class="text-xs opacity-60 font-mono">
-                  {{ item.home_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.home_team.current_season.losses|floatformat:0|default:"0" }}
-                </span>
-                <span class="badge badge-ghost badge-xs">H</span>
-              </div>
+              <span class="text-[10px] opacity-60 font-mono">
+                {{ item.home_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.home_team.current_season.losses|floatformat:0|default:"0" }}
+              </span>
             </div>
           </a>
 
           {# Center: Score / VS / Prediction #}
-          <div class="text-center px-2 min-w-[100px]">
+          <div class="text-center px-1.5 min-w-[70px]">
             {% if item.actual %}
               {# Completed game #}
-              <div class="font-bold text-2xl font-mono">
+              <div class="font-bold text-lg font-mono leading-none">
                 <span class="{% if item.actual.home_points > item.actual.away_points %}text-success{% endif %}">{{ item.actual.home_points }}</span>
-                <span class="opacity-30 mx-1">–</span>
+                <span class="opacity-30 mx-0.5">–</span>
                 <span class="{% if item.actual.away_points > item.actual.home_points %}text-success{% endif %}">{{ item.actual.away_points }}</span>
               </div>
-              <div class="text-[10px] uppercase tracking-wider opacity-40 mt-0.5">Final</div>
+              <div class="text-[9px] uppercase tracking-wider opacity-40 mt-0.5">Final</div>
 
               {% if item.prediction %}
-              <div class="mt-1.5">
+              <div class="mt-1">
                 {% if item.prediction_correct %}
                 <span class="badge badge-success badge-xs gap-1">
-                  <i class="fa-solid fa-check text-[8px]"></i> {{ item.prediction.winner.school }}
+                  <i class="fa-solid fa-check text-[8px]"></i>
+                  <span class="truncate max-w-[60px]">{{ item.prediction.winner.abbrv|default:item.prediction.winner.school }}</span>
                 </span>
                 {% else %}
                 <span class="badge badge-error badge-xs gap-1">
-                  <i class="fa-solid fa-xmark text-[8px]"></i> {{ item.prediction.winner.school }}
+                  <i class="fa-solid fa-xmark text-[8px]"></i>
+                  <span class="truncate max-w-[60px]">{{ item.prediction.winner.abbrv|default:item.prediction.winner.school }}</span>
                 </span>
                 {% endif %}
               </div>
@@ -169,71 +174,257 @@
 
             {% else %}
               {# Scheduled game #}
-              <div class="font-bold text-2xl opacity-30">VS</div>
+              <div class="font-bold text-lg opacity-30 leading-none">VS</div>
               {% if item.prediction %}
-              <div class="mt-1.5">
-                <span class="badge badge-primary badge-sm gap-1">
+              <div class="mt-1">
+                <span class="badge badge-primary badge-xs gap-1">
                   <i class="fa-solid fa-trophy text-[8px]"></i>
-                  {{ item.prediction.winner.school }}
+                  <span class="truncate max-w-[60px]">{{ item.prediction.winner.abbrv|default:item.prediction.winner.school }}</span>
                 </span>
               </div>
-              <div class="text-[10px] opacity-40 mt-0.5">Predicted</div>
+              <div class="text-[9px] opacity-40 mt-0.5">Predicted</div>
               {% else %}
-              <div class="text-[10px] opacity-30 mt-1">No prediction</div>
+              <div class="text-[9px] opacity-30 mt-1">No prediction</div>
               {% endif %}
             {% endif %}
           </div>
 
           {# Away team #}
           <a href="{% url 'opencourt:team-detail' item.away_team.slug %}"
-             class="flex items-center gap-3 justify-end group min-w-0" onclick="event.stopPropagation()">
-            <div class="min-w-0 text-right">
-              <div class="font-bold text-lg leading-tight group-hover:text-primary transition-colors truncate">
+             class="flex items-center gap-2 justify-end group min-w-0" onclick="event.stopPropagation()">
+            <div class="min-w-0 flex flex-col items-center">
+              <img
+              src="https://a.espncdn.com/combiner/i?img=/i/teamlogos/ncaa/500/{{ item.away_team.source_id|default:item.away_team.id }}.png"
+              alt="{{ item.away_team.school }} logo"
+              class="w-12 h-12 rounded-md object-contain bg-white p-1.5 shadow-sm flex-shrink-0"
+              onerror="this.style.display='none'"
+              />
+              <div class="font-bold text-xs text-center leading-tight group-hover:text-primary transition-colors truncate w-full mt-1">
                 {{ item.away_team.school }}
               </div>
-              <div class="flex items-center gap-2 justify-end mt-0.5">
-                <span class="badge badge-ghost badge-xs">A</span>
-                <span class="text-xs opacity-60 font-mono">
-                  {{ item.away_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.away_team.current_season.losses|floatformat:0|default:"0" }}
-                </span>
-              </div>
+              <span class="text-[10px] opacity-60 font-mono">
+                {{ item.away_team.current_season.wins|floatformat:0|default:"0" }}–{{ item.away_team.current_season.losses|floatformat:0|default:"0" }}
+              </span>
             </div>
             {% if item.away_team.primary_color %}
-            <div class="w-2 h-10 rounded-full flex-shrink-0"
+            <div class="w-1.5 h-9 rounded-full flex-shrink-0"
                  style="background-color: {{ item.away_team.primary_color }};"></div>
             {% endif %}
           </a>
 
         </div>
 
-        {# ── Stats Comparison ── #}
-        <details class="mt-4 border-t border-base-300 pt-3">
-          <summary class="cursor-pointer text-sm font-semibold text-primary select-none flex items-center gap-2">
-            <i class="fa-solid fa-chart-bar text-xs"></i>
-            Season Averages
-          </summary>
-
-          <div class="mt-3">
-            {# Visual stat bars #}
-            <div class="space-y-1.5 stat-compare"
-                 data-home-color="{{ item.home_team.primary_color|default:'#6366f1' }}"
-                 data-away-color="{{ item.away_team.primary_color|default:'#ef4444' }}">
-
-              {% with h=item.home_stats a=item.away_stats %}
-              <div class="cmp-row" data-home="{{ h.pts|default:'0' }}" data-away="{{ a.pts|default:'0' }}" data-label="PTS" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.fgp|default:'0' }}" data-away="{{ a.fgp|default:'0' }}" data-label="FG%" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.tpp|default:'0' }}" data-away="{{ a.tpp|default:'0' }}" data-label="3PT%" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.ftp|default:'0' }}" data-away="{{ a.ftp|default:'0' }}" data-label="FT%" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.reb|default:'0' }}" data-away="{{ a.reb|default:'0' }}" data-label="REB" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.oreb|default:'0' }}" data-away="{{ a.oreb|default:'0' }}" data-label="OREB" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.ast|default:'0' }}" data-away="{{ a.ast|default:'0' }}" data-label="AST" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.stl|default:'0' }}" data-away="{{ a.stl|default:'0' }}" data-label="STL" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.blk|default:'0' }}" data-away="{{ a.blk|default:'0' }}" data-label="BLK" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.tov|default:'0' }}" data-away="{{ a.tov|default:'0' }}" data-label="TO" data-higher="worse"></div>
-              {% endwith %}
-            </div>
+        {# ── Box Score (always visible) ── #}
+        <div class="mt-3 border-t border-base-300 pt-2">
+          <div class="text-xs font-semibold text-primary flex items-center gap-1.5 mb-2">
+            <i class="fa-solid fa-chart-bar text-[10px]"></i>
+            Box Score
+            {% if not item.home_game_stats or not item.away_game_stats %}
+              <span class="text-[10px] opacity-50 font-normal normal-case">
+                (season averages)
+              </span>
+            {% endif %}
           </div>
-        </details>
+          <div>
+            {% if item.home_game_stats and item.away_game_stats %}
+              {# ── Actual GameTeamStats (completed game) ── #}
+              {% with hs=item.home_game_stats aws=item.away_game_stats %}
+              <div class="overflow-x-auto rounded-md">
+                <table class="table table-xs w-full">
+                  <thead>
+                    <tr class="text-[10px] uppercase tracking-wider opacity-60">
+                      <th class="text-left">Team</th>
+                      <th class="text-center">PTS</th>
+                      <th class="text-center">FG</th>
+                      <th class="text-center">3PT</th>
+                      <th class="text-center">FT</th>
+                      <th class="text-center">REB</th>
+                      <th class="text-center">OREB</th>
+                      <th class="text-center">AST</th>
+                      <th class="text-center">STL</th>
+                      <th class="text-center">BLK</th>
+                      <th class="text-center">TO</th>
+                      {% if hs.eff_fg_pct is not None %}<th class="text-center">eFG%</th>{% endif %}
+                    </tr>
+                  </thead>
+                  <tbody class="text-lg font-mono">
+                    {# ── Home team row ── #}
+                    <tr>
+                      <td class="text-left font-sans font-semibold whitespace-nowrap">
+                        {{ item.game.home_team.school }}
+                      </td>
+                      <td class="text-center {% if hs.points is not None and aws.points is not None and hs.points > aws.points %}font-bold text-success{% endif %}">
+                        {{ hs.points|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.fg_pct is not None and aws.fg_pct is not None and hs.fg_pct > aws.fg_pct %}font-bold text-success{% endif %}">
+                        {% if hs.fg_made is not None %}
+                          {{ hs.fg_made|floatformat:0 }}/{{ hs.fg_attempted|floatformat:0 }}
+                          <div class="text-[9px] opacity-50">
+                            {{ hs.fg_pct|floatformat:1 }}%
+                          </div>
+                        {% else %}—{% endif %}
+                      </td>
+                      <td class="text-center {% if hs.three_pt_pct is not None and aws.three_pt_pct is not None and hs.three_pt_pct > aws.three_pt_pct %}font-bold text-success{% endif %}">
+                        {% if hs.three_pt_made is not None %}
+                          {{ hs.three_pt_made|floatformat:0 }}/{{ hs.three_pt_attempted|floatformat:0 }}
+                          <div class="text-[9px] opacity-50">
+                            {{ hs.three_pt_pct|floatformat:1 }}%
+                          </div>
+                        {% else %}—{% endif %}
+                      </td>
+                      <td class="text-center {% if hs.ft_pct is not None and aws.ft_pct is not None and hs.ft_pct > aws.ft_pct %}font-bold text-success{% endif %}">
+                        {% if hs.ft_made is not None %}
+                          {{ hs.ft_made|floatformat:0 }}/{{ hs.ft_attempted|floatformat:0 }}
+                          <div class="text-[9px] opacity-50">
+                            {{ hs.ft_pct|floatformat:1 }}%
+                          </div>
+                        {% else %}—{% endif %}
+                      </td>
+                      <td class="text-center {% if hs.reb_total is not None and aws.reb_total is not None and hs.reb_total > aws.reb_total %}font-bold text-success{% endif %}">
+                        {{ hs.reb_total|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.reb_offensive is not None and aws.reb_offensive is not None and hs.reb_offensive > aws.reb_offensive %}font-bold text-success{% endif %}">
+                        {{ hs.reb_offensive|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.assists is not None and aws.assists is not None and hs.assists > aws.assists %}font-bold text-success{% endif %}">
+                        {{ hs.assists|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.steals is not None and aws.steals is not None and hs.steals > aws.steals %}font-bold text-success{% endif %}">
+                        {{ hs.steals|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.blocks is not None and aws.blocks is not None and hs.blocks > aws.blocks %}font-bold text-success{% endif %}">
+                        {{ hs.blocks|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.turnovers is not None and aws.turnovers is not None and hs.turnovers < aws.turnovers %}font-bold text-success{% endif %}">
+                        {{ hs.turnovers|default_if_none:"—" }}
+                      </td>
+                      {% if hs.eff_fg_pct is not None %}
+                        <td class="text-center {% if aws.eff_fg_pct is not None and hs.eff_fg_pct > aws.eff_fg_pct %}font-bold text-success{% endif %}">
+                          {{ hs.eff_fg_pct|floatformat:1 }}%
+                        </td>
+                      {% endif %}
+                    </tr>
+                    {# ── Away team row ── #}
+                    <tr>
+                      <td class="text-left font-sans font-semibold whitespace-nowrap">
+                        {{ item.game.away_team.school }}
+                      </td>
+                      <td class="text-center {% if hs.points is not None and aws.points is not None and aws.points > hs.points %}font-bold text-success{% endif %}">
+                        {{ aws.points|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.fg_pct is not None and aws.fg_pct is not None and aws.fg_pct > hs.fg_pct %}font-bold text-success{% endif %}">
+                        {% if aws.fg_made is not None %}
+                          {{ aws.fg_made|floatformat:0 }}/{{ aws.fg_attempted|floatformat:0 }}
+                          <div class="text-[9px] opacity-50">{{ aws.fg_pct|floatformat:1 }}%
+                          </div>
+                        {% else %}
+                           —
+                        {% endif %}
+                      </td>
+                      <td class="text-center {% if hs.three_pt_pct is not None and aws.three_pt_pct is not None and aws.three_pt_pct > hs.three_pt_pct %}font-bold text-success{% endif %}">
+                        {% if aws.three_pt_made is not None %}
+                          {{ aws.three_pt_made|floatformat:0 }}/{{ aws.three_pt_attempted|floatformat:0 }}
+                          <div class="text-[9px] opacity-50">
+                            {{ aws.three_pt_pct|floatformat:1 }}%
+                          </div>
+                        {% else %}
+                          —
+                        {% endif %}
+                      </td>
+                      <td class="text-center {% if hs.ft_pct is not None and aws.ft_pct is not None and aws.ft_pct > hs.ft_pct %}font-bold text-success{% endif %}">
+                        {% if aws.ft_made is not None %}
+                          {{ aws.ft_made|floatformat:0 }}/{{ aws.ft_attempted|floatformat:0 }}
+                          <div class="text-[9px] opacity-50">
+                            {{ aws.ft_pct|floatformat:1 }}%
+                          </div>
+                        {% else %}
+                           —
+                        {% endif %}
+                      </td>
+                      <td class="text-center {% if hs.reb_total is not None and aws.reb_total is not None and aws.reb_total > hs.reb_total %}font-bold text-success{% endif %}">
+                        {{ aws.reb_total|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.reb_offensive is not None and aws.reb_offensive is not None and aws.reb_offensive > hs.reb_offensive %}font-bold text-success{% endif %}">
+                        {{ aws.reb_offensive|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.assists is not None and aws.assists is not None and aws.assists > hs.assists %}font-bold text-success{% endif %}">
+                        {{ aws.assists|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.steals is not None and aws.steals is not None and aws.steals > hs.steals %}font-bold text-success{% endif %}">
+                        {{ aws.steals|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.blocks is not None and aws.blocks is not None and aws.blocks > hs.blocks %}font-bold text-success{% endif %}">
+                        {{ aws.blocks|default_if_none:"—" }}
+                      </td>
+                      <td class="text-center {% if hs.turnovers is not None and aws.turnovers is not None and aws.turnovers < hs.turnovers %}font-bold text-success{% endif %}">
+                        {{ aws.turnovers|default_if_none:"—" }}
+                      </td>
+                      {% if hs.eff_fg_pct is not None %}
+                        <td class="text-center {% if aws.eff_fg_pct is not None and aws.eff_fg_pct > hs.eff_fg_pct %}font-bold text-success{% endif %}">
+                          {{ aws.eff_fg_pct|floatformat:1 }}%
+                        </td>
+                      {% endif %}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {% endwith %}
+            {% else %}
+              {# ── Season averages fallback (upcoming games or missing GameTeamStats) ── #}
+              {% with hs=item.home_stats aws=item.away_stats %}
+              <div class="overflow-x-auto rounded-md">
+                <table class="table table-xs w-full">
+                  <thead>
+                    <tr class="text-[10px] uppercase tracking-wider opacity-60">
+                      <th class="text-left">Team</th>
+                      <th class="text-center">PPG</th>
+                      <th class="text-center">FG%</th>
+                      <th class="text-center">3PT%</th>
+                      <th class="text-center">FT%</th>
+                      <th class="text-center">RPG</th>
+                      <th class="text-center">OREB</th>
+                      <th class="text-center">APG</th>
+                      <th class="text-center">SPG</th>
+                      <th class="text-center">BPG</th>
+                      <th class="text-center">TO</th>
+                    </tr>
+                  </thead>
+                  <tbody class="text-xs font-mono">
+                    {# ── Home team row ── #}
+                    <tr>
+                      <td class="text-left font-sans font-semibold whitespace-nowrap">{{ item.home_team.school }}</td>
+                      <td class="text-center {% if hs.pts is not None and aws.pts is not None and hs.pts > aws.pts %}font-bold text-success{% endif %}">{{ hs.pts|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.fgp is not None and aws.fgp is not None and hs.fgp > aws.fgp %}font-bold text-success{% endif %}">{% if hs.fgp is not None %}{{ hs.fgp|floatformat:1 }}%{% else %}—{% endif %}</td>
+                      <td class="text-center {% if hs.tpp is not None and aws.tpp is not None and hs.tpp > aws.tpp %}font-bold text-success{% endif %}">{% if hs.tpp is not None %}{{ hs.tpp|floatformat:1 }}%{% else %}—{% endif %}</td>
+                      <td class="text-center {% if hs.ftp is not None and aws.ftp is not None and hs.ftp > aws.ftp %}font-bold text-success{% endif %}">{% if hs.ftp is not None %}{{ hs.ftp|floatformat:1 }}%{% else %}—{% endif %}</td>
+                      <td class="text-center {% if hs.reb is not None and aws.reb is not None and hs.reb > aws.reb %}font-bold text-success{% endif %}">{{ hs.reb|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.oreb is not None and aws.oreb is not None and hs.oreb > aws.oreb %}font-bold text-success{% endif %}">{{ hs.oreb|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.ast is not None and aws.ast is not None and hs.ast > aws.ast %}font-bold text-success{% endif %}">{{ hs.ast|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.stl is not None and aws.stl is not None and hs.stl > aws.stl %}font-bold text-success{% endif %}">{{ hs.stl|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.blk is not None and aws.blk is not None and hs.blk > aws.blk %}font-bold text-success{% endif %}">{{ hs.blk|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.tov is not None and aws.tov is not None and hs.tov < aws.tov %}font-bold text-success{% endif %}">{{ hs.tov|default_if_none:"—" }}</td>
+                    </tr>
+                    {# ── Away team row ── #}
+                    <tr>
+                      <td class="text-left font-sans font-semibold whitespace-nowrap">{{ item.away_team.school }}</td>
+                      <td class="text-center {% if hs.pts is not None and aws.pts is not None and aws.pts > hs.pts %}font-bold text-success{% endif %}">{{ aws.pts|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.fgp is not None and aws.fgp is not None and aws.fgp > hs.fgp %}font-bold text-success{% endif %}">{% if aws.fgp is not None %}{{ aws.fgp|floatformat:1 }}%{% else %}—{% endif %}</td>
+                      <td class="text-center {% if hs.tpp is not None and aws.tpp is not None and aws.tpp > hs.tpp %}font-bold text-success{% endif %}">{% if aws.tpp is not None %}{{ aws.tpp|floatformat:1 }}%{% else %}—{% endif %}</td>
+                      <td class="text-center {% if hs.ftp is not None and aws.ftp is not None and aws.ftp > hs.ftp %}font-bold text-success{% endif %}">{% if aws.ftp is not None %}{{ aws.ftp|floatformat:1 }}%{% else %}—{% endif %}</td>
+                      <td class="text-center {% if hs.reb is not None and aws.reb is not None and aws.reb > hs.reb %}font-bold text-success{% endif %}">{{ aws.reb|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.oreb is not None and aws.oreb is not None and aws.oreb > hs.oreb %}font-bold text-success{% endif %}">{{ aws.oreb|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.ast is not None and aws.ast is not None and aws.ast > hs.ast %}font-bold text-success{% endif %}">{{ aws.ast|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.stl is not None and aws.stl is not None and aws.stl > hs.stl %}font-bold text-success{% endif %}">{{ aws.stl|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.blk is not None and aws.blk is not None and aws.blk > hs.blk %}font-bold text-success{% endif %}">{{ aws.blk|default_if_none:"—" }}</td>
+                      <td class="text-center {% if hs.tov is not None and aws.tov is not None and aws.tov < hs.tov %}font-bold text-success{% endif %}">{{ aws.tov|default_if_none:"—" }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {% endwith %}
+            {% endif %}
+          </div>
+        </div>
 
       </div>
     </div>
@@ -348,28 +539,26 @@
           </a>
         </div>
 
-        <details class="mt-4 border-t border-base-300 pt-3">
-          <summary class="cursor-pointer text-sm font-semibold text-primary select-none flex items-center gap-2">
-            <i class="fa-solid fa-chart-bar text-xs"></i> Season Averages
-          </summary>
-          <div class="mt-3">
-            <div class="space-y-1.5 stat-compare"
-                 data-home-color="{{ item.home_team.primary_color|default:'#6366f1' }}"
-                 data-away-color="{{ item.away_team.primary_color|default:'#ef4444' }}">
-              {% with h=item.home_stats a=item.away_stats %}
-              <div class="cmp-row" data-home="{{ h.pts|default:'0' }}" data-away="{{ a.pts|default:'0' }}" data-label="PTS" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.fgp|default:'0' }}" data-away="{{ a.fgp|default:'0' }}" data-label="FG%" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.tpp|default:'0' }}" data-away="{{ a.tpp|default:'0' }}" data-label="3PT%" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.ftp|default:'0' }}" data-away="{{ a.ftp|default:'0' }}" data-label="FT%" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.reb|default:'0' }}" data-away="{{ a.reb|default:'0' }}" data-label="REB" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.ast|default:'0' }}" data-away="{{ a.ast|default:'0' }}" data-label="AST" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.stl|default:'0' }}" data-away="{{ a.stl|default:'0' }}" data-label="STL" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.blk|default:'0' }}" data-away="{{ a.blk|default:'0' }}" data-label="BLK" data-higher="better"></div>
-              <div class="cmp-row" data-home="{{ h.tov|default:'0' }}" data-away="{{ a.tov|default:'0' }}" data-label="TO" data-higher="worse"></div>
-              {% endwith %}
-            </div>
+        <div class="mt-3 border-t border-base-300 pt-2">
+          <div class="text-xs font-semibold text-primary flex items-center gap-1.5 mb-2">
+            <i class="fa-solid fa-chart-bar text-[10px]"></i> Season Averages
           </div>
-        </details>
+          <div class="space-y-1.5 stat-compare"
+               data-home-color="{{ item.home_team.primary_color|default:'#6366f1' }}"
+               data-away-color="{{ item.away_team.primary_color|default:'#ef4444' }}">
+            {% with h=item.home_stats a=item.away_stats %}
+            <div class="cmp-row" data-home="{{ h.pts|default:'0' }}" data-away="{{ a.pts|default:'0' }}" data-label="PTS" data-higher="better"></div>
+            <div class="cmp-row" data-home="{{ h.fgp|default:'0' }}" data-away="{{ a.fgp|default:'0' }}" data-label="FG%" data-higher="better"></div>
+            <div class="cmp-row" data-home="{{ h.tpp|default:'0' }}" data-away="{{ a.tpp|default:'0' }}" data-label="3PT%" data-higher="better"></div>
+            <div class="cmp-row" data-home="{{ h.ftp|default:'0' }}" data-away="{{ a.ftp|default:'0' }}" data-label="FT%" data-higher="better"></div>
+            <div class="cmp-row" data-home="{{ h.reb|default:'0' }}" data-away="{{ a.reb|default:'0' }}" data-label="REB" data-higher="better"></div>
+            <div class="cmp-row" data-home="{{ h.ast|default:'0' }}" data-away="{{ a.ast|default:'0' }}" data-label="AST" data-higher="better"></div>
+            <div class="cmp-row" data-home="{{ h.stl|default:'0' }}" data-away="{{ a.stl|default:'0' }}" data-label="STL" data-higher="better"></div>
+            <div class="cmp-row" data-home="{{ h.blk|default:'0' }}" data-away="{{ a.blk|default:'0' }}" data-label="BLK" data-higher="better"></div>
+            <div class="cmp-row" data-home="{{ h.tov|default:'0' }}" data-away="{{ a.tov|default:'0' }}" data-label="TO" data-higher="worse"></div>
+            {% endwith %}
+          </div>
+        </div>
       </div>
     </div>
     {% endfor %}
@@ -381,19 +570,19 @@
 <script>
 (function() {
 
-  var searchInput  = document.getElementById('team-search');
-  var gamesList    = document.getElementById('games-list');
-  var searchPanel  = document.getElementById('search-results');
-  var noSearchMsg  = document.getElementById('no-search-msg');
-  var noSearchText = document.getElementById('no-search-text');
-  var searchCards  = document.querySelectorAll('.search-card');
-  var gameCards = document.querySelectorAll('#games-list .game-card');
-  var currentMode  = '{{ mode }}';
+  const searchInput  = document.getElementById('team-search');
+  const gamesList    = document.getElementById('games-list');
+  const searchPanel  = document.getElementById('search-results');
+  const noSearchMsg  = document.getElementById('no-search-msg');
+  const noSearchText = document.getElementById('no-search-text');
+  const searchCards  = document.querySelectorAll('.search-card');
+  const gameCards = document.querySelectorAll('#games-list .game-card');
+  const currentMode  = '{{ mode }}';
 
   // ─── SEARCH ───
     searchInput.addEventListener('input', function() {
-    var q = searchInput.value.trim().toLowerCase();
-    var pageNav = document.getElementById('page-nav');
+    let q = searchInput.value.trim().toLowerCase();
+    let pageNav = document.getElementById('page-nav');
 
     if (!q) {
       gamesList.style.display = '';
@@ -411,16 +600,16 @@
       gamesList.style.display = '';
       if (pageNav) pageNav.style.display = 'none';
 
-      var count = 0;
+      let count = 0;
       gameCards.forEach(function(card) {
-        var teams = (card.getAttribute('data-teams') || '').toLowerCase();
-        var match = teams.indexOf(q) !== -1;
+        let teams = (card.getAttribute('data-teams') || '').toLowerCase();
+        let match = teams.indexOf(q) !== -1;
         card.style.display = match ? '' : 'none';
         if (match) count++;
       });
 
       // Reuse no-games-msg for "no results" feedback
-      var noGames = document.getElementById('no-games-msg');
+      let noGames = document.getElementById('no-games-msg');
       if (noGames) noGames.style.display = count === 0 ? '' : 'none';
 
     } else {
@@ -428,10 +617,10 @@
       gamesList.style.display = 'none';
       searchPanel.style.display = '';
 
-      var count = 0;
+      let count = 0;
       searchCards.forEach(function(card) {
-        var teams = (card.getAttribute('data-teams') || '').toLowerCase();
-        var match = teams.indexOf(q) !== -1;
+        let teams = (card.getAttribute('data-teams') || '').toLowerCase();
+        let match = teams.indexOf(q) !== -1;
         card.style.display = match ? '' : 'none';
         if (match) count++;
       });
@@ -450,70 +639,6 @@
     }
   });
 
-  // ─── STAT COMPARISON BAR RENDERER ───
-  function ensureHash(color) {
-    if (!color) return null;
-    return color.startsWith('#') ? color : '#' + color;
-  }
-
-  function renderStatBars(container) {
-    if (container.getAttribute('data-rendered') === 'true') return;
-
-    var homeColor = ensureHash(container.getAttribute('data-home-color')) || '#6366f1';
-    var awayColor = ensureHash(container.getAttribute('data-away-color')) || '#ef4444';
-    var rows = container.querySelectorAll('.cmp-row');
-
-    rows.forEach(function(el) {
-      var homeVal = parseFloat(el.getAttribute('data-home')) || 0;
-      var awayVal = parseFloat(el.getAttribute('data-away')) || 0;
-      var label   = el.getAttribute('data-label') || '';
-      var higher  = el.getAttribute('data-higher') || 'better';
-      var isPct   = label.indexOf('%') !== -1;
-
-      var maxVal  = isPct ? 100 : Math.max(homeVal, awayVal, 1);
-      var homePct = Math.min((homeVal / maxVal) * 100, 100);
-      var awayPct = Math.min((awayVal / maxVal) * 100, 100);
-
-      // Determine winner
-      var homeWins, awayWins;
-      if (higher === 'worse') {
-        homeWins = homeVal < awayVal;
-        awayWins = awayVal < homeVal;
-      } else {
-        homeWins = homeVal > awayVal;
-        awayWins = awayVal > homeVal;
-      }
-
-      var homeDisplay = isPct ? homeVal.toFixed(1) + '%' : String(homeVal);
-      var awayDisplay = isPct ? awayVal.toFixed(1) + '%' : String(awayVal);
-
-      el.className = 'grid grid-cols-[1fr_44px_1fr] gap-x-3 items-center px-1 py-0.5';
-      el.innerHTML =
-        '<div style="display:flex;align-items:center;gap:6px;">' +
-          '<span class="text-xs font-mono ' + (homeWins ? 'font-bold' : 'opacity-50') + '" style="width:48px;text-align:right;flex-shrink:0;">' + homeDisplay + '</span>' +
-          '<div style="position:relative;height:16px;border-radius:3px;flex:1 1 0%;min-width:0;overflow:hidden;background:rgba(128,128,128,0.08);">' +
-            '<div style="position:absolute;top:0;right:0;height:100%;border-radius:3px;width:' + homePct + '%;background:' + homeColor + ';opacity:' + (homeWins ? '0.9' : '0.25') + ';transition:width 0.4s ease;"></div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="text-center text-[10px] font-semibold uppercase tracking-wider opacity-40">' + label + '</div>' +
-        '<div style="display:flex;align-items:center;gap:6px;">' +
-          '<div style="position:relative;height:16px;border-radius:3px;flex:1 1 0%;min-width:0;overflow:hidden;background:rgba(128,128,128,0.08);">' +
-            '<div style="position:absolute;top:0;left:0;height:100%;border-radius:3px;width:' + awayPct + '%;background:' + awayColor + ';opacity:' + (awayWins ? '0.9' : '0.25') + ';transition:width 0.4s ease;"></div>' +
-          '</div>' +
-          '<span class="text-xs font-mono ' + (awayWins ? 'font-bold' : 'opacity-50') + '" style="width:48px;text-align:left;flex-shrink:0;">' + awayDisplay + '</span>' +
-        '</div>';
-    });
-
-    container.setAttribute('data-rendered', 'true');
-  }
-
-  // ─── LAZY RENDER STAT BARS ON DETAILS OPEN ───
-  document.addEventListener('toggle', function(e) {
-    if (e.target.tagName === 'DETAILS' && e.target.open) {
-      var container = e.target.querySelector('.stat-compare');
-      if (container) renderStatBars(container);
-    }
-  }, true);
 
 })();
 </script>

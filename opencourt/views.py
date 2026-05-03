@@ -45,9 +45,12 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.generic import ListView, TemplateView
 from django.core.paginator import Paginator
+from django.core.cache import cache
 
 from opencourt.models import Conference, Game, GameTeamStats, Ranking, Team, TeamSeasonStats
-from opencourt.predictions.predict import make_predictions as predict_game
+from opencourt.predictions.predict import make_predictions as predict_game, DEFAULT_MODEL as PREDICT_MODEL_PATH
+from opencourt.predictions.features import build_features
+import joblib
 
 class HomeView(TemplateView):
     template_name = 'opencourt/home.html'
@@ -540,6 +543,12 @@ class UpcomingView(TemplateView):
                         queryset=TeamSeasonStats.objects.filter(season=season_year),
                         to_attr='_current_stats',
                     ),
+                    # Bulk-load per-game box score rows so completed games can show
+                    # actual GameTeamStats (vs. season averages) without N+1 queries.
+                    Prefetch(
+                        'team_stats',
+                        queryset=GameTeamStats.objects.select_related('team'),
+                    ),
                 )
                 .order_by('-start_date' if results_mode else 'start_date')
             )
@@ -599,6 +608,16 @@ class UpcomingView(TemplateView):
                 if prediction and actual:
                     prediction_correct = (prediction['winner'].id == actual['winner'].id)
 
+                # Per-game box score rows from the prefetch cache (no extra DB hit).
+                # Will be None for upcoming games — template falls back to season averages.
+                home_game_stats = None
+                away_game_stats = None
+                for stat in game.team_stats.all():
+                    if stat.team_id == game.home_team_id:
+                        home_game_stats = stat
+                    elif stat.team_id == game.away_team_id:
+                        away_game_stats = stat
+
                 result.append({
                     'game': game,
                     'home_team': game.home_team,
@@ -606,6 +625,8 @@ class UpcomingView(TemplateView):
                     'prediction': prediction,
                     'actual': actual,
                     'prediction_correct': prediction_correct,
+                    'home_game_stats': home_game_stats,  # GameTeamStats or None
+                    'away_game_stats': away_game_stats,  # GameTeamStats or None
                     'home_stats': {
                         'pts': avg(h_stats,  'off_points'),
                         'fgp': pct(h_stats,  'off_fg_pct'),
@@ -650,14 +671,56 @@ class UpcomingView(TemplateView):
                 games_qs = finished_qs.filter(start_date__date=selected_date)
                 games = enrich_qs(games_qs)
 
-            # Accuracy from whatever we just enriched
-            correct = sum(1 for g in games if g.get('prediction_correct') is True)
-            total   = sum(1 for g in games if g.get('prediction_correct') is not None)
-            context['accuracy'] = {
-                'correct': correct,
-                'total': total,
-                'pct': round(correct / total * 100, 1) if total else 0,
-            }
+            # ── Model accuracy across EVERY completed game this season ──
+            # We always compute over the full season (not just the displayed slice)
+            # so the banner reflects true model performance. Cached for 10 min
+            # since predictions are CPU-bound (XGBoost inference) and the loop
+            # runs over thousands of games.
+            #
+            # Perf note: predict_game() reloads the .pkl from disk on every
+            # call, so we bypass it here and load the model once + call the
+            # underlying build_features/predict directly. This turns a ~30s
+            # cold request into ~1-2s.
+            accuracy_key = f'season_accuracy_{season_year}'
+            season_accuracy = cache.get(accuracy_key)
+            if season_accuracy is None:
+                try:
+                    pred_model = joblib.load(PREDICT_MODEL_PATH)
+                except Exception:
+                    pred_model = None
+
+                correct = 0
+                total = 0
+                if pred_model is not None:
+                    season_finished_qs = (
+                        base_qs("final")
+                        .filter(home_winner__isnull=False, season=season_year)
+                    )
+                    for g in season_finished_qs:
+                        h_stats = g.home_team.current_season
+                        a_stats = g.away_team.current_season
+                        if not (h_stats and a_stats):
+                            continue
+                        home_adv = 0 if g.neutral_site else 1
+                        try:
+                            features = build_features(h_stats, a_stats, home_adv)
+                            pred = pred_model.predict(features)
+                        except (TypeError, ZeroDivisionError):
+                            continue
+                        if type(pred) is not np.ndarray:
+                            continue
+                        pred_home_win = bool(pred[0] == 1)
+                        if pred_home_win == bool(g.home_winner):
+                            correct += 1
+                        total += 1
+                season_accuracy = {
+                    'correct': correct,
+                    'total': total,
+                    'pct': round(correct / total * 100, 1) if total else 0,
+                }
+                cache.set(accuracy_key, season_accuracy, 60 * 10)  # 10 min TTL
+
+            context['accuracy'] = season_accuracy
 
             # Search filters the current page's cards via JS — no separate pool needed
             all_games = []
