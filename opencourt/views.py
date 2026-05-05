@@ -23,10 +23,13 @@
 #     '_current_stats') so stats are loaded in bulk rather than per-team.
 
 import json
+import logging
+import threading
 from datetime import date, datetime, timedelta
 from math import floor
 
 import numpy as np
+import pandas as pd
 from django.db.models import (
   Avg,
   Case,
@@ -48,9 +51,167 @@ from django.core.paginator import Paginator
 from django.core.cache import cache
 
 from opencourt.models import Conference, Game, GameTeamStats, Ranking, Team, TeamSeasonStats
-from opencourt.predictions.predict import make_predictions as predict_game, DEFAULT_MODEL as PREDICT_MODEL_PATH
+from opencourt.predictions.predict import DEFAULT_MODEL as PREDICT_MODEL_PATH
 from opencourt.predictions.features import build_features
 import joblib
+
+logger = logging.getLogger(__name__)
+
+
+# Module-level prediction-model cache. joblib.load on the .pkl takes ~50-200ms
+# and was previously being called once per game inside predict_game() — for a
+# season with ~5,000 completed games that alone runs the request past the
+# gunicorn worker timeout. We load lazily on first use, then reuse the same
+# in-memory model for every subsequent request handled by this worker.
+_PREDICT_MODEL = None
+_PREDICT_MODEL_LOAD_FAILED = False
+
+
+def _get_predict_model():
+    """Return a process-cached prediction model, or None if loading failed."""
+    global _PREDICT_MODEL, _PREDICT_MODEL_LOAD_FAILED
+    if _PREDICT_MODEL is not None:
+        return _PREDICT_MODEL
+    if _PREDICT_MODEL_LOAD_FAILED:
+        return None
+    try:
+        _PREDICT_MODEL = joblib.load(PREDICT_MODEL_PATH)
+    except Exception:
+        logger.exception("Failed to load prediction model from %s", PREDICT_MODEL_PATH)
+        _PREDICT_MODEL_LOAD_FAILED = True
+        return None
+    return _PREDICT_MODEL
+
+
+def _predict_home_win(pred_model, h_stats, a_stats, home_adv):
+    """
+    Single-game prediction helper. Returns True/False for home win, or None
+    if features can't be built (missing stats / divide-by-zero).
+    """
+    if pred_model is None or h_stats is None or a_stats is None:
+        return None
+    try:
+        features = build_features(h_stats, a_stats, home_adv)
+        pred = pred_model.predict(features)
+    except (TypeError, ZeroDivisionError):
+        return None
+    if not isinstance(pred, np.ndarray) or len(pred) == 0:
+        return None
+    return bool(pred[0] == 1)
+
+
+# ── Cache warmer for season-wide model accuracy ──────────────────────────────
+# The /upcoming/?mode=results page shows a banner with prediction accuracy
+# across every completed game this season. Even after vectorizing predictions
+# the cold-cache compute is ~1-2s on Railway. Rather than make a user wait for
+# it, the CacheWarmerMiddleware fires `trigger_async_warm()` on the first
+# request to any page so the cache is already populated by the time someone
+# clicks through to results. LocMemCache is per-worker, so each gunicorn
+# worker warms its own copy once. The threading.Lock + in-flight set prevent
+# duplicate warms within a single worker if multiple requests race in.
+
+ACCURACY_CACHE_KEY = 'season_accuracy_{season_year}'
+_warm_lock = threading.Lock()
+_warm_in_flight = set()
+
+
+def _current_season_year():
+    today = date.today()
+    return today.year + 1 if today.month >= 7 else today.year
+
+
+def _finished_games_qs(season_year):
+    """Queryset of finished games for the given season with stats prefetched.
+
+    Mirrors the prefetch shape used by UpcomingView.base_qs so that
+    `g.home_team.current_season` (the prefetched _current_stats attr) hits
+    cache instead of issuing a query per game.
+    """
+    return (
+        Game.objects
+        .filter(status="final", home_winner__isnull=False, season=season_year)
+        .select_related('home_team', 'away_team')
+        .prefetch_related(
+            Prefetch(
+                'home_team__season_stats',
+                queryset=TeamSeasonStats.objects.filter(season=season_year),
+                to_attr='_current_stats',
+            ),
+            Prefetch(
+                'away_team__season_stats',
+                queryset=TeamSeasonStats.objects.filter(season=season_year),
+                to_attr='_current_stats',
+            ),
+        )
+    )
+
+
+def _warm_season_accuracy(season_year=None):
+    """Synchronously recompute season accuracy and write it to the cache.
+
+    Returns the accuracy dict. Called both as the cache-miss fallback inside
+    UpcomingView and from the background warmer thread.
+    """
+    if season_year is None:
+        season_year = _current_season_year()
+
+    pred_model = _get_predict_model()
+    qs = _finished_games_qs(season_year)
+    accuracy = UpcomingView._compute_season_accuracy(qs, pred_model)
+
+    # Cache successful results for 1 hour. Cache empty results for 60s so we
+    # don't hammer a broken model on every request but recover quickly.
+    ttl = 60 * 60 if accuracy.get('total') else 60
+    cache.set(ACCURACY_CACHE_KEY.format(season_year=season_year), accuracy, ttl)
+    return accuracy
+
+
+def _warm_target(season_year):
+    """Thread entry point — runs the warm and cleans up its DB connection."""
+    from django.db import connection
+    try:
+        accuracy = _warm_season_accuracy(season_year)
+        logger.info(
+            "Warmed season_accuracy_%s in background: %s/%s correct (%s%%)",
+            season_year, accuracy.get('correct'), accuracy.get('total'),
+            accuracy.get('pct'),
+        )
+    except Exception:
+        logger.exception("Cache warmer failed for season %s", season_year)
+    finally:
+        with _warm_lock:
+            _warm_in_flight.discard(season_year)
+        # Threads get their own DB connection from Django's connection pool;
+        # close it explicitly so it doesn't leak when the thread exits.
+        connection.close()
+
+
+def trigger_async_warm(season_year=None):
+    """Fire-and-forget: spawn a daemon thread to warm the accuracy cache.
+
+    No-op if the cache is already populated, or if a warm for this season
+    is already in flight in this worker. Returns True if a thread was spawned.
+    """
+    if season_year is None:
+        season_year = _current_season_year()
+
+    if cache.get(ACCURACY_CACHE_KEY.format(season_year=season_year)) is not None:
+        return False
+
+    with _warm_lock:
+        if season_year in _warm_in_flight:
+            return False
+        _warm_in_flight.add(season_year)
+
+    t = threading.Thread(
+        target=_warm_target,
+        args=(season_year,),
+        name=f'season-accuracy-warmer-{season_year}',
+        daemon=True,
+    )
+    t.start()
+    return True
+
 
 class HomeView(TemplateView):
     template_name = 'opencourt/home.html'
@@ -484,6 +645,76 @@ class UpcomingView(TemplateView):
     """
     template_name = 'opencourt/head_head.html'
 
+    @staticmethod
+    def _compute_season_accuracy(season_finished_qs, pred_model):
+        """
+        Compute prediction accuracy across every completed game in the
+        provided queryset using a single vectorized predict() call.
+
+        Returns: {'correct': int, 'total': int, 'pct': float}
+        """
+        empty = {'correct': 0, 'total': 0, 'pct': 0}
+        if pred_model is None:
+            return empty
+
+        feature_rows = []
+        actuals = []
+        for g in season_finished_qs:
+            h_stats = g.home_team.current_season
+            a_stats = g.away_team.current_season
+            if not (h_stats and a_stats):
+                continue
+            home_adv = 0 if g.neutral_site else 1
+            # Inline the feature math so we avoid building one DataFrame per game.
+            # If any stat is missing, TypeError fires here and we skip the game.
+            try:
+                row = {
+                    'diff_efg_pct': h_stats.off_eff_fg_pct - a_stats.off_eff_fg_pct,
+                    'diff_turnover_rate': (
+                        (h_stats.off_turnovers / h_stats.off_possessions)
+                        - (a_stats.off_turnovers / a_stats.off_possessions)
+                    ),
+                    'diff_point_diff': (
+                        (h_stats.off_points - h_stats.opp_points)
+                        - (a_stats.off_points - a_stats.opp_points)
+                    ),
+                    'diff_pace': h_stats.pace - a_stats.pace,
+                    'diff_avg_ftr': h_stats.off_ft_rate - a_stats.off_ft_rate,
+                    'diff_avg_rating': h_stats.off_rating - a_stats.off_rating,
+                    'diff_avg_blocks': h_stats.off_blocks - a_stats.off_blocks,
+                    'diff_avg_oreb_pct': h_stats.off_oreb_pct - a_stats.off_oreb_pct,
+                    'diff_avg_ato_rto': (
+                        (h_stats.off_assists / h_stats.off_turnovers)
+                        - (a_stats.off_assists / a_stats.off_turnovers)
+                    ),
+                    'home_advantage': home_adv,
+                }
+            except (TypeError, ZeroDivisionError):
+                continue
+            feature_rows.append(row)
+            actuals.append(bool(g.home_winner))
+
+        if not feature_rows:
+            return empty
+
+        # Single batched predict() call — the big win versus the old per-game loop.
+        try:
+            features_df = pd.DataFrame(feature_rows)
+            preds = pred_model.predict(features_df)
+        except Exception:
+            logger.exception("Batched season accuracy prediction failed")
+            return empty
+
+        actuals_arr = np.asarray(actuals, dtype=bool)
+        pred_home_win = np.asarray(preds) == 1
+        correct = int(np.sum(pred_home_win == actuals_arr))
+        total = int(actuals_arr.size)
+        return {
+            'correct': correct,
+            'total': total,
+            'pct': round(correct / total * 100, 1) if total else 0,
+        }
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
@@ -569,6 +800,11 @@ class UpcomingView(TemplateView):
             val = getattr(stat_obj, field, None)
             return round(val, 1) if val is not None else None
 
+        # Load the prediction model once for this whole request. enrich_qs may be
+        # called twice (e.g. all_qs + games_qs in upcoming mode) and previously
+        # each game reloaded the .pkl from disk via predict_game().
+        pred_model = _get_predict_model()
+
         # ──────────────── Enrich queryset into template-friendly list of dicts ──────────────
         def enrich_qs(qs):
             result = []
@@ -576,23 +812,17 @@ class UpcomingView(TemplateView):
                 h_stats  = game.home_team.current_season
                 a_stats = game.away_team.current_season
 
-                # Run prediction — wrapped in try/except because build_features()
-                # will crash if any stat field is None (division/subtraction on None).
+                # Run prediction using the preloaded model. _predict_home_win
+                # handles missing stats and divide-by-zero by returning None.
                 prediction = None
                 if h_stats and a_stats:
                     home_adv = 0 if game.neutral_site else 1
-                    try:
-                        pred = predict_game(h_stats, a_stats, home_adv)
-                        # predict_game returns a numpy array on success
-                        # or 1 (int) on error.
-                        if type(pred) is np.ndarray:
-                            prediction = {
-                                'winner': game.home_team if pred[0] == 1 else game.away_team,
-                                'is_home_win': bool(pred[0] == 1),
-                            }
-                    except (TypeError, ZeroDivisionError):
-                        # Some stat fields are None — skip prediction for this game
-                        pass
+                    is_home_win = _predict_home_win(pred_model, h_stats, a_stats, home_adv)
+                    if is_home_win is not None:
+                        prediction = {
+                            'winner': game.home_team if is_home_win else game.away_team,
+                            'is_home_win': is_home_win,
+                        }
 
                 # Actual result (only meaningful for completed games)
                 actual = None
@@ -673,52 +903,23 @@ class UpcomingView(TemplateView):
 
             # ── Model accuracy across EVERY completed game this season ──
             # We always compute over the full season (not just the displayed slice)
-            # so the banner reflects true model performance. Cached for 10 min
-            # since predictions are CPU-bound (XGBoost inference) and the loop
-            # runs over thousands of games.
+            # so the banner reflects true model performance.
             #
-            # Perf note: predict_game() reloads the .pkl from disk on every
-            # call, so we bypass it here and load the model once + call the
-            # underlying build_features/predict directly. This turns a ~30s
-            # cold request into ~1-2s.
-            accuracy_key = f'season_accuracy_{season_year}'
+            # Perf note: previously this iterated games one-at-a-time and called
+            # pred_model.predict() on a 1-row DataFrame for each — XGBoost has
+            # ~5-50ms of fixed per-call overhead, so over ~5,000 finished games
+            # the request blew past the gunicorn worker timeout on a cold cache.
+            # We now build features for every eligible game into a single
+            # DataFrame and call predict() exactly once. This drops the cold
+            # request from ~30s+ (timeout) to ~1-2s. Cached for 1 hour since the
+            # underlying season stats only refresh on data sync.
+            accuracy_key = ACCURACY_CACHE_KEY.format(season_year=season_year)
             season_accuracy = cache.get(accuracy_key)
             if season_accuracy is None:
-                try:
-                    pred_model = joblib.load(PREDICT_MODEL_PATH)
-                except Exception:
-                    pred_model = None
-
-                correct = 0
-                total = 0
-                if pred_model is not None:
-                    season_finished_qs = (
-                        base_qs("final")
-                        .filter(home_winner__isnull=False, season=season_year)
-                    )
-                    for g in season_finished_qs:
-                        h_stats = g.home_team.current_season
-                        a_stats = g.away_team.current_season
-                        if not (h_stats and a_stats):
-                            continue
-                        home_adv = 0 if g.neutral_site else 1
-                        try:
-                            features = build_features(h_stats, a_stats, home_adv)
-                            pred = pred_model.predict(features)
-                        except (TypeError, ZeroDivisionError):
-                            continue
-                        if type(pred) is not np.ndarray:
-                            continue
-                        pred_home_win = bool(pred[0] == 1)
-                        if pred_home_win == bool(g.home_winner):
-                            correct += 1
-                        total += 1
-                season_accuracy = {
-                    'correct': correct,
-                    'total': total,
-                    'pct': round(correct / total * 100, 1) if total else 0,
-                }
-                cache.set(accuracy_key, season_accuracy, 60 * 10)  # 10 min TTL
+                # Cache miss — fall back to a synchronous compute. Normally
+                # CacheWarmerMiddleware will have populated this in the
+                # background by the time the user clicks through to results.
+                season_accuracy = _warm_season_accuracy(season_year)
 
             context['accuracy'] = season_accuracy
 
