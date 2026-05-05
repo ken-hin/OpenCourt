@@ -93,6 +93,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Fires a daemon thread on the first request handled by each gunicorn
+    # worker to pre-compute the /upcoming/?mode=results model-accuracy banner.
+    # Short-circuits cheaply on subsequent requests once the cache is warm.
+    'opencourt.middleware.CacheWarmerMiddleware',
     # Injects a tiny script that polls for CSS/template changes and refreshes
     # the browser automatically. Only active when DEBUG=True + INTERNAL_IPS match.
     'django_browser_reload.middleware.BrowserReloadMiddleware',
