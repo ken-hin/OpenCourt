@@ -389,7 +389,7 @@ All configuration is managed through `.env` (local) or platform environment vari
 
 ## Production & Deployment
 
-OpenCourt is deployed on **Railway** (hosting) and **Supabase** (PostgreSQL database). For the full step-by-step setup guide, see [`DEPLOY.md`](DEPLOY.md). This section covers the how and why so the whole team is on the same page.
+OpenCourt is deployed on **Railway** (hosting) and **Supabase** (PostgreSQL database). For the full step-by-step setup guide, see [`DEPLOY.md`](docs/DEPLOY.md). This section covers the how and why so the whole team is on the same page.
 
 ### How Dev vs Production Works
 
@@ -571,7 +571,7 @@ git commit -m "short description of what you did"
 # 4. Push your branch to GitHub
 git push -u origin feature/your-feature-name
 
-# 5. Open a Pull Request on GitHub — message Kenneth to review before merging 
+# 5. Open a Pull Request on GitHub — message Kenneth to review before merging
 ```
 
 ### Rules
