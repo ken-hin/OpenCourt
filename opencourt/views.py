@@ -842,7 +842,6 @@ class UpcomingView(TemplateView):
     """
 
     # Maximum game pills shown directly inside a day cell.
-    # Overflow collapses into a single "+N more" pill that opens a modal.
     CAL_PILL_CAP = 5
 
     def get_template_names(self):

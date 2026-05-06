@@ -1,39 +1,32 @@
+{# predictions_calendar.html — month-grid view of every game with predictions #}
+{# ˇˇˇ ABOUT ˇˇˇ #}
+<!--
+Rendered by UpcomingView when ?view=calendar (the default). The sister template
+head_head.html renders the same /upcoming/ URL when ?view=list. Both templates share a
+Calendar/List toggle in their header so the user can flip between them.
+
+Data contract (from UpcomingView._build_calendar_context):
+ • weeks — list of weeks; each is 7 day-cells
+   {date, in_month, is_today, games, visible_games, overflow_count, modal_id}
+ • pill_cap — max pills shown in-cell before overflow collapses
+ • modal_days — list of {date, modal_id, total_games, games} for every day
+   with > pill_cap games
+ • accuracy — {correct, total, pct} for the current season
+   weekday_labels — Sun-first weekday header strings
+ • view_mode — always 'calendar' here (used by the toggle)
+
+Pill colors:
+ • pill-correct — green; model picked the actual winner
+ • pill-incorrect — red; model picked the wrong team
+ • pill-unplayed — slate; game-scheduled, not yet played
+ • pill-no_prediction — slate; played but stats were missing for prediction
+
+Day overflow: Cells display at most `pill_cap` pills; days with more games render a "+N more"
+pill that opens a <dialog> modal containing full head-to-head cards for every game on that day
+(see _game_card.html partial).
+-->
 {% extends 'base.html' %}
 {% load static %}
-
-{# predictions_calendar.html — month-grid view of every game with prediction
-   accuracy color-coding.
-
-   Rendered by UpcomingView when ?view=calendar (the default). The sister
-   template head_head.html renders the same /upcoming/ URL when ?view=list.
-   Both templates share a Calendar/List toggle in their header so the user
-   can flip between them.
-
-   Data contract (from UpcomingView._build_calendar_context):
-     weeks         — list of weeks; each is 7 day-cells
-                     {date, in_month, is_today, games, visible_games,
-                      overflow_count, modal_id}
-     pill_cap      — max pills shown in-cell before overflow collapses
-     modal_days    — list of {date, modal_id, total_games, games} for
-                     every day with > pill_cap games
-     year, month, month_name, prev/next_year, prev/next_month
-     today, season_year, is_current_month
-     accuracy      — {correct, total, pct} for the current season
-     weekday_labels — Sun-first weekday header strings
-     view_mode     — always 'calendar' here (used by the toggle)
-
-   Pill colors:
-     pill-correct      — green; model picked the actual winner
-     pill-incorrect    — red;   model picked the wrong team
-     pill-unplayed     — slate; game scheduled, not yet played
-     pill-no_prediction — slate; played but stats were missing for prediction
-
-   Day overflow:
-     Cells display at most `pill_cap` pills; days with more games render a
-     "+N more" pill that opens a <dialog> modal containing full head-to-head
-     cards for every game on that day (see _game_card.html partial).
-#}
-
 {% block title %}Predictions Calendar — OpenCourt{% endblock %}
 
 {% block extra_css %}
@@ -228,12 +221,10 @@
 
     {# Calendar / List view toggle. ?view=calendar is the default; ?view=list reverts to the original head-to-head card grid (head_head.html). #}
     <div class="join">
-      <a href="?view=calendar"
-         class="btn btn-sm join-item {% if view_mode == 'calendar' %}btn-primary{% else %}btn-ghost{% endif %}">
+      <a href="?view=calendar" class="btn btn-sm join-item {% if view_mode == 'calendar' %}btn-primary{% else %}btn-ghost{% endif %}">
         <i class="fa-solid fa-calendar-days mr-1"></i> Calendar
       </a>
-      <a href="?view=list"
-         class="btn btn-sm join-item {% if view_mode == 'list' %}btn-primary{% else %}btn-ghost{% endif %}">
+      <a href="?view=list" class="btn btn-sm join-item {% if view_mode == 'list' %}btn-primary{% else %}btn-ghost{% endif %}">
         <i class="fa-solid fa-list mr-1"></i> List
       </a>
     </div>
@@ -260,16 +251,14 @@
   {# ─── Month navigation + legend ─── #}
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <div class="join">
-      <a href="?view=calendar&year={{ prev_year }}&month={{ prev_month }}"
-         class="btn btn-sm btn-ghost join-item">
+      <a href="?view=calendar&year={{ prev_year }}&month={{ prev_month }}" class="btn btn-sm btn-ghost join-item">
         <i class="fa-solid fa-chevron-left"></i>
         <span class="hidden sm:inline">Prev</span>
       </a>
       <span class="btn btn-sm join-item btn-neutral no-animation pointer-events-none">
         {{ month_name }} {{ year }}
       </span>
-      <a href="?view=calendar&year={{ next_year }}&month={{ next_month }}"
-         class="btn btn-sm btn-ghost join-item">
+      <a href="?view=calendar&year={{ next_year }}&month={{ next_month }}" class="btn btn-sm btn-ghost join-item">
         <span class="hidden sm:inline">Next</span>
         <i class="fa-solid fa-chevron-right"></i>
       </a>
@@ -332,12 +321,8 @@
           <span class="pill-team text-right">{{ item.home_team.abbrv|default:item.home_team.school }}</span>
         </a>
         {% endfor %}
-        {% comment %}
-          Only show "+N more" on in-month cells.
-          Adjacent-month padding cells skip the modal
-          (we don't generate dialogs for them) so the button
-          would point at nothing.
-        {% endcomment %}
+        {# Only show "+N more" on in-month cells. Adjacent-month padding #}
+        {# cells skip the modal so the button would point at nothing. #}
         {% if cell.overflow_count > 0 and cell.in_month %}
         <button type="button"
                 class="cal-more"
@@ -383,16 +368,17 @@
 {% endfor %}
 
 <script>
-  // Open a day-overflow modal by id. Defined on window so the inline
-  // onclick="openDayModal(...)" handlers on each "+N more" button find it
-  // regardless of script execution order.
-  //
-  // Two-tier strategy:
-  //   1. Native <dialog>.showModal() — preferred (gives free Escape-to-close
-  //      and click-outside-to-close via the backdrop form inside the dialog).
-  //   2. .modal-open class fallback — some browsers/builds where showModal()
-  //      raises (e.g. nested fixed contexts) still respond to DaisyUI's
-  //      .modal-open class.
+
+  /* Open a day-overflow modal by id. Defined on window so the inline
+  *  onclick="openDayModal(...)" handlers on each "+N more" button find it
+  *  regardless of script execution order.
+  *
+  *  Two-tier strategy:
+  *    1. Native <dialog>.showModal() — preferred (gives free Escape-to-close
+  *    and click-outside-to-close via the backdrop form inside the dialog).
+  *    2. .modal-open class fallback — some browsers/builds where showModal()
+  *    raises (e.g. nested fixed contexts) still respond to DaisyUI's .modal-open class.
+  */
   window.openDayModal = function(id) {
     var dlg = document.getElementById(id);
     if (!dlg) {
