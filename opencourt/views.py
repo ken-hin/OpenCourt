@@ -21,29 +21,59 @@
 #     the template to avoid N+1 queries. See ConferenceListView for an example.
 #   - The Team.current_season property works best with a Prefetch(..., to_attr=
 #     '_current_stats') so stats are loaded in bulk rather than per-team.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# UpcomingView — Predictions page architecture
+# ─────────────────────────────────────────────────────────────────────────
+# The /upcoming/ URL is a single dispatcher view that renders one of two
+# templates depending on the ?view= query parameter:
+#
+#     ?view=calendar (default) → opencourt/predictions_calendar.html
+#                                month grid, color-coded by prediction outcome
+#     ?view=list               → opencourt/head_head.html
+#                                head-to-head card grid + global search pool
+#
+# UpcomingView.get_template_names() picks the template; get_context_data()
+# delegates to _build_calendar_context() or _build_list_context(). Both
+# branches share:
+#   - _get_predict_model()             — process-cached XGBoost / sklearn model
+#   - _batch_predict_home_wins(games)  — single-call batched prediction
+#   - _current_season_year()           — date → season-year resolver
+#   - the season-accuracy cache (warmed by CacheWarmerMiddleware)
+#
+# Season-year convention. The DB stores `Game.season` and
+# `TeamSeasonStats.season` as the season's ENDING calendar year (so
+# season=2026 is the 2025-26 season). Both view branches must compute
+# season_year using the same formula or their prefetched team stats
+# diverge for the same game and predictions disagree across views.
+# Calendar uses (year, month) from URL params; list uses today. They
+# call the same per-date formula:  month >= 7 ? year+1 : year.
+#
+# Calendar pill states. Each game on the calendar gets one of:
+#     correct        — model picked the actual home/away winner       (green)
+#     incorrect      — model picked the wrong team                    (red)
+#     unplayed       — game scheduled, not yet final                  (neutral)
+#     no_prediction  — game played but feature stats were missing     (neutral)
+# Days with more than CAL_PILL_CAP games collapse the overflow into a
+# "+N more" pill that opens a modal containing full head-to-head cards.
+#
+# List view search. A single season-wide query feeds both the visible
+# (paginated/date-filtered) `games` list and a global `all_games` pool.
+# The pool is what the search bar filters — typing a team reveals every
+# matching game in the current season (played + upcoming), regardless of
+# which paginated page the user is currently on.
 
+import calendar
 import json
 import logging
 import threading
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from math import floor
 
 import numpy as np
 import pandas as pd
-from django.db.models import (
-  Avg,
-  Case,
-  Count,
-  ExpressionWrapper,
-  F,
-  FloatField,
-  OuterRef,
-  Prefetch,
-  Q,
-  Subquery,
-  Sum,
-  When
-)
+from django.db.models import (Avg, Case, Count, ExpressionWrapper, F, FloatField, OuterRef, Prefetch, Q, Subquery, Sum, When)
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.generic import ListView, TemplateView
@@ -57,7 +87,6 @@ import joblib
 
 logger = logging.getLogger(__name__)
 
-
 # Module-level prediction-model cache. joblib.load on the .pkl takes ~50-200ms
 # and was previously being called once per game inside predict_game() — for a
 # season with ~5,000 completed games that alone runs the request past the
@@ -65,7 +94,6 @@ logger = logging.getLogger(__name__)
 # in-memory model for every subsequent request handled by this worker.
 _PREDICT_MODEL = None
 _PREDICT_MODEL_LOAD_FAILED = False
-
 
 def _get_predict_model():
     """Return a process-cached prediction model, or None if loading failed."""
@@ -81,7 +109,6 @@ def _get_predict_model():
         _PREDICT_MODEL_LOAD_FAILED = True
         return None
     return _PREDICT_MODEL
-
 
 def _predict_home_win(pred_model, h_stats, a_stats, home_adv):
     """
@@ -99,7 +126,6 @@ def _predict_home_win(pred_model, h_stats, a_stats, home_adv):
         return None
     return bool(pred[0] == 1)
 
-
 # ── Cache warmer for season-wide model accuracy ──────────────────────────────
 # The /upcoming/?mode=results page shows a banner with prediction accuracy
 # across every completed game this season. Even after vectorizing predictions
@@ -114,11 +140,27 @@ ACCURACY_CACHE_KEY = 'season_accuracy_{season_year}'
 _warm_lock = threading.Lock()
 _warm_in_flight = set()
 
-
 def _current_season_year():
+    """
+    Return the `season` value of the CBB season "today" belongs to.
+
+    Important: despite what some model docstrings say, the actual data in
+    this DB stores Game.season / TeamSeasonStats.season as the season's
+    **ending** calendar year. So Game.season=2026 paired with
+    season_label='20252026' is the 2025-26 season. The formula below
+    follows that convention:
+      • month >= 7 (Jul-Dec, fall semester): we're inside (or about to
+        start) a season ending NEXT calendar year. → today.year + 1
+      • month <  7 (Jan-Jun, spring semester): we're inside (or just past)
+        a season ending THIS calendar year.       → today.year
+
+    Both UpcomingView's calendar branch and list branch use this — and
+    the calendar's per-month formula must match this convention too —
+    otherwise prefetches would target the wrong season's stats and the
+    same game could produce different predictions in each view.
+    """
     today = date.today()
     return today.year + 1 if today.month >= 7 else today.year
-
 
 def _finished_games_qs(season_year):
     """Queryset of finished games for the given season with stats prefetched.
@@ -145,6 +187,132 @@ def _finished_games_qs(season_year):
         )
     )
 
+def _compute_season_accuracy(season_finished_qs, pred_model):
+    """
+    Compute prediction accuracy across every completed game in the
+    provided queryset using a single vectorized predict() call.
+
+    Returns: {'correct': int, 'total': int, 'pct': float}
+    """
+    empty = {'correct': 0, 'total': 0, 'pct': 0}
+    if pred_model is None:
+        return empty
+
+    feature_rows = []
+    actuals = []
+    for g in season_finished_qs:
+        h_stats = g.home_team.current_season
+        a_stats = g.away_team.current_season
+        if not (h_stats and a_stats):
+            continue
+        home_adv = 0 if g.neutral_site else 1
+        # Inline the feature math so we avoid building one DataFrame per game.
+        # If any stat is missing, TypeError fires here and we skip the game.
+        try:
+            row = {
+                'diff_efg_pct': h_stats.off_eff_fg_pct - a_stats.off_eff_fg_pct,
+                'diff_turnover_rate': (
+                    (h_stats.off_turnovers / h_stats.off_possessions)
+                    - (a_stats.off_turnovers / a_stats.off_possessions)
+                ),
+                'diff_point_diff': (
+                    (h_stats.off_points - h_stats.opp_points)
+                    - (a_stats.off_points - a_stats.opp_points)
+                ),
+                'diff_pace': h_stats.pace - a_stats.pace,
+                'diff_avg_ftr': h_stats.off_ft_rate - a_stats.off_ft_rate,
+                'diff_avg_rating': h_stats.off_rating - a_stats.off_rating,
+                'diff_avg_blocks': h_stats.off_blocks - a_stats.off_blocks,
+                'diff_avg_oreb_pct': h_stats.off_oreb_pct - a_stats.off_oreb_pct,
+                'diff_avg_ato_rto': (
+                    (h_stats.off_assists / h_stats.off_turnovers)
+                    - (a_stats.off_assists / a_stats.off_turnovers)
+                ),
+                'home_advantage': home_adv,
+            }
+        except (TypeError, ZeroDivisionError):
+            continue
+        feature_rows.append(row)
+        actuals.append(bool(g.home_winner))
+
+    if not feature_rows:
+        return empty
+
+    # Single batched predict() call — the big win versus a per-game loop.
+    try:
+        features_df = pd.DataFrame(feature_rows)
+        preds = pred_model.predict(features_df)
+    except Exception:
+        logger.exception("Batched season accuracy prediction failed")
+        return empty
+
+    actuals_arr = np.asarray(actuals, dtype=bool)
+    pred_home_win = np.asarray(preds) == 1
+    correct = int(np.sum(pred_home_win == actuals_arr))
+    total = int(actuals_arr.size)
+    return {
+        'correct': correct,
+        'total': total,
+        'pct': round(correct / total * 100, 1) if total else 0,
+    }
+
+def _batch_predict_home_wins(games, pred_model):
+    """
+    Run predictions in a single batched predict() call for many games.
+
+    Returns: {game_id: bool}  — True if home team predicted to win,
+                               False if away team predicted to win.
+    Games with missing stats / divide-by-zero are silently skipped (no key).
+    """
+    if pred_model is None:
+        return {}
+
+    feature_rows = []
+    game_ids = []
+    for g in games:
+        h_stats = g.home_team.current_season
+        a_stats = g.away_team.current_season
+        if not (h_stats and a_stats):
+            continue
+        home_adv = 0 if g.neutral_site else 1
+        try:
+            row = {
+                'diff_efg_pct': h_stats.off_eff_fg_pct - a_stats.off_eff_fg_pct,
+                'diff_turnover_rate': (
+                    (h_stats.off_turnovers / h_stats.off_possessions)
+                    - (a_stats.off_turnovers / a_stats.off_possessions)
+                ),
+                'diff_point_diff': (
+                    (h_stats.off_points - h_stats.opp_points)
+                    - (a_stats.off_points - a_stats.opp_points)
+                ),
+                'diff_pace': h_stats.pace - a_stats.pace,
+                'diff_avg_ftr': h_stats.off_ft_rate - a_stats.off_ft_rate,
+                'diff_avg_rating': h_stats.off_rating - a_stats.off_rating,
+                'diff_avg_blocks': h_stats.off_blocks - a_stats.off_blocks,
+                'diff_avg_oreb_pct': h_stats.off_oreb_pct - a_stats.off_oreb_pct,
+                'diff_avg_ato_rto': (
+                    (h_stats.off_assists / h_stats.off_turnovers)
+                    - (a_stats.off_assists / a_stats.off_turnovers)
+                ),
+                'home_advantage': home_adv,
+            }
+        except (TypeError, ZeroDivisionError):
+            continue
+        feature_rows.append(row)
+        game_ids.append(g.id)
+
+    if not feature_rows:
+        return {}
+
+    try:
+        features_df = pd.DataFrame(feature_rows)
+        preds = pred_model.predict(features_df)
+    except Exception:
+        logger.exception("Batched calendar prediction failed")
+        return {}
+
+    return {gid: bool(p == 1) for gid, p in zip(game_ids, np.asarray(preds))}
 
 def _warm_season_accuracy(season_year=None):
     """Synchronously recompute season accuracy and write it to the cache.
@@ -157,14 +325,13 @@ def _warm_season_accuracy(season_year=None):
 
     pred_model = _get_predict_model()
     qs = _finished_games_qs(season_year)
-    accuracy = UpcomingView._compute_season_accuracy(qs, pred_model)
+    accuracy = _compute_season_accuracy(qs, pred_model)
 
     # Cache successful results for 1 hour. Cache empty results for 60s so we
     # don't hammer a broken model on every request but recover quickly.
     ttl = 60 * 60 if accuracy.get('total') else 60
     cache.set(ACCURACY_CACHE_KEY.format(season_year=season_year), accuracy, ttl)
     return accuracy
-
 
 def _warm_target(season_year):
     """Thread entry point — runs the warm and cleans up its DB connection."""
@@ -184,7 +351,6 @@ def _warm_target(season_year):
         # Threads get their own DB connection from Django's connection pool;
         # close it explicitly so it doesn't leak when the thread exits.
         connection.close()
-
 
 def trigger_async_warm(season_year=None):
     """Fire-and-forget: spawn a daemon thread to warm the accuracy cache.
@@ -211,7 +377,6 @@ def trigger_async_warm(season_year=None):
     )
     t.start()
     return True
-
 
 class HomeView(TemplateView):
     template_name = 'opencourt/home.html'
@@ -614,181 +779,180 @@ class TeamDetailView(TemplateView):
 
 class UpcomingView(TemplateView):
     """
-    Upcoming games page with head-to-head stat comparison.
-    Supports two modes controlled by the ?mode= query parameter:
+    Predictions page. Renders one of two views chosen by the ?view= GET param:
 
-      ?mode=upcoming (default) — future scheduled games
-      ?mode=results — completed games with prediction vs actual outcome
+      ?view=calendar (default) — monthly calendar grid (predictions_calendar.html)
+      ?view=list               — original head-to-head card grid (head_head.html)
 
-    Template: opencourt/head_head.html
+    Both views share data prerequisites (season stats, predictions) but build
+    different context dicts and use different templates. The view parameter is
+    propagated into context as `view_mode` so each template can render the
+    Calendar/List toggle button.
 
-    URL params (upcoming mode):
-      ?date=YYYY-MM-DD — filter games to a specific date (defaults to today)
-      ?date=all — show every future scheduled game in chronological order
+    ─── Calendar view (?view=calendar) ───
+    Month-grid view of every game with prediction accuracy color-coding.
 
-    URL params (results mode):
-      ?date=YYYY-MM-DD — filter completed games to a specific date
-      ?date=all — show all completed games this season (default for results)
+    URL params:
+      ?year=YYYY  — calendar year to display (defaults to today's year)
+      ?month=M    — month number 1-12 (defaults to current month)
+
+    For each game on the calendar:
+      • status='correct'      — game played, model picked the actual winner (green)
+      • status='incorrect'    — game played, model picked the wrong team (red)
+      • status='unplayed'     — game scheduled, not yet played (neutral)
+      • status='no_prediction'— game played but stats were missing for prediction
+                                (treated as unplayed/neutral in the UI)
+
+    Day-overflow handling:
+      Cells display at most CAL_PILL_CAP game pills. Days with more games get
+      a "+N more" pill that opens a modal containing the full head-to-head
+      matchup cards (matchup, prediction badge, box score) for every game
+      on that day. modal_days carries the enriched data.
+
+    ─── List view (?view=list) ───
+    Original head-to-head card grid with two sub-modes (?mode=upcoming /
+    ?mode=results) and date filters (?date=YYYY-MM-DD / ?date=all). Same
+    accuracy banner as the calendar view. Pagination via ?page= when
+    showing "All" completed games.
 
     Context variables:
-      mode — "upcoming" or "results"
-      games — enriched list of dicts for the selected date/filter.
-      all_games — enriched list of ALL games for search (future for upcoming, completed for results).
-      show_all — bool, True when ?date=all was requested.
-      upcoming_dates — list of date objects for the next 7 days (upcoming mode), or last 7 days (results mode).
-      selected_date — the date currently being viewed (None when show_all).
-      today — date.today()
-      tomorrow — today + 1 day
+      view_mode     — 'calendar' or 'list' (always present)
 
-      Results-mode extras:
-        accuracy — dict with 'correct', 'total', 'pct' summarizing prediction hit rate across the displayed games.
+      Calendar mode:
+        weeks       — list of weeks; each week is a list of 7 day-cells.
+                      Each cell is {date, in_month, is_today, games,
+                      visible_games (≤ pill_cap), overflow_count, modal_id}.
+        pill_cap    — CAL_PILL_CAP (cells truncate visible pills at this count)
+        modal_days  — list of {date, modal_id, total_games, games} for every
+                      day with overflow.
+        year, month, month_name, prev_year, prev_month, next_year, next_month
+        season_year, is_current_month, weekday_labels
+
+      List mode:
+        mode        — 'upcoming' or 'results'
+        games       — enriched list of dicts for the selected date/filter.
+        all_games   — enriched list of ALL games (for cross-page search).
+        show_all    — bool, True when ?date=all was requested.
+        upcoming_dates — next 7 / last 7 day tabs depending on mode.
+        selected_date — date currently displayed (None when show_all).
+        page_obj    — paginator (results mode + show_all only).
+
+      Shared:
+        today, accuracy
     """
-    template_name = 'opencourt/head_head.html'
 
-    @staticmethod
-    def _compute_season_accuracy(season_finished_qs, pred_model):
-        """
-        Compute prediction accuracy across every completed game in the
-        provided queryset using a single vectorized predict() call.
+    # Maximum game pills shown directly inside a day cell.
+    # Overflow collapses into a single "+N more" pill that opens a modal.
+    CAL_PILL_CAP = 5
 
-        Returns: {'correct': int, 'total': int, 'pct': float}
-        """
-        empty = {'correct': 0, 'total': 0, 'pct': 0}
-        if pred_model is None:
-            return empty
+    def get_template_names(self):
+        if self._view_mode() == 'list':
+            return ['opencourt/head_head.html']
+        return ['opencourt/predictions_calendar.html']
 
-        feature_rows = []
-        actuals = []
-        for g in season_finished_qs:
-            h_stats = g.home_team.current_season
-            a_stats = g.away_team.current_season
-            if not (h_stats and a_stats):
-                continue
-            home_adv = 0 if g.neutral_site else 1
-            # Inline the feature math so we avoid building one DataFrame per game.
-            # If any stat is missing, TypeError fires here and we skip the game.
-            try:
-                row = {
-                    'diff_efg_pct': h_stats.off_eff_fg_pct - a_stats.off_eff_fg_pct,
-                    'diff_turnover_rate': (
-                        (h_stats.off_turnovers / h_stats.off_possessions)
-                        - (a_stats.off_turnovers / a_stats.off_possessions)
-                    ),
-                    'diff_point_diff': (
-                        (h_stats.off_points - h_stats.opp_points)
-                        - (a_stats.off_points - a_stats.opp_points)
-                    ),
-                    'diff_pace': h_stats.pace - a_stats.pace,
-                    'diff_avg_ftr': h_stats.off_ft_rate - a_stats.off_ft_rate,
-                    'diff_avg_rating': h_stats.off_rating - a_stats.off_rating,
-                    'diff_avg_blocks': h_stats.off_blocks - a_stats.off_blocks,
-                    'diff_avg_oreb_pct': h_stats.off_oreb_pct - a_stats.off_oreb_pct,
-                    'diff_avg_ato_rto': (
-                        (h_stats.off_assists / h_stats.off_turnovers)
-                        - (a_stats.off_assists / a_stats.off_turnovers)
-                    ),
-                    'home_advantage': home_adv,
-                }
-            except (TypeError, ZeroDivisionError):
-                continue
-            feature_rows.append(row)
-            actuals.append(bool(g.home_winner))
-
-        if not feature_rows:
-            return empty
-
-        # Single batched predict() call — the big win versus the old per-game loop.
-        try:
-            features_df = pd.DataFrame(feature_rows)
-            preds = pred_model.predict(features_df)
-        except Exception:
-            logger.exception("Batched season accuracy prediction failed")
-            return empty
-
-        actuals_arr = np.asarray(actuals, dtype=bool)
-        pred_home_win = np.asarray(preds) == 1
-        correct = int(np.sum(pred_home_win == actuals_arr))
-        total = int(actuals_arr.size)
-        return {
-            'correct': correct,
-            'total': total,
-            'pct': round(correct / total * 100, 1) if total else 0,
-        }
+    def _view_mode(self):
+        """Return 'list' if ?view=list was requested, else 'calendar'."""
+        return 'list' if self.request.GET.get('view') == 'list' else 'calendar'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context['view_mode'] = self._view_mode()
+        if context['view_mode'] == 'list':
+            self._build_list_context(context)
+        else:
+            self._build_calendar_context(context)
+        return context
 
+    def _parse_year_month(self):
+        """Parse ?year= and ?month= GET params, falling back to today."""
         today = date.today()
-        tomorrow = today + timedelta(days=1)
+        try:
+            year = int(self.request.GET.get('year', today.year))
+        except (TypeError, ValueError):
+            year = today.year
+        try:
+            month = int(self.request.GET.get('month', today.month))
+            if not 1 <= month <= 12:
+                raise ValueError
+        except (TypeError, ValueError):
+            month = today.month
+        # Clamp year to a reasonable range so a hostile/malformed param
+        # can't ask us to enumerate centuries.
+        if not 1990 <= year <= 2100:
+            year = today.year
+        return year, month
 
-        # Season field stores the starting year.
-        # Games from Nov-Dec use same year, and games from Jan onward are year-1.
-        season_year = today.year + 1 if today.month >= 7 else today.year
+    def _build_calendar_context(self, context):
+        """Populate `context` with the data the calendar template needs."""
+        today = date.today()
+        year, month = self._parse_year_month()
 
-        # Timezone-aware "start of today" for DateTimeField comparisons
-        today_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+        # Compute the season for the displayed month using the data's
+        # ending-year convention (Game.season=2026 ↔ season_label='20252026'
+        # = the 2025-26 season). Nov-Dec games belong to a season ending
+        # NEXT calendar year, Jan-Jun games belong to a season ending THIS
+        # calendar year. We compute from the selected month rather than
+        # today so a viewer browsing back to Feb 2025 gets the 2024-25
+        # season's stats prefetched (season=2025).
+        #
+        # This must match _current_season_year() — both views need to
+        # resolve the same season for the same date so the prefetched
+        # team stats line up and predictions agree across views.
+        season_year = year + 1 if month >= 7 else year
 
-        # Mode: upcoming (default) vs. results
-        mode = self.request.GET.get('mode', 'upcoming')
-        if mode not in ('upcoming', 'results'):
-            mode = 'upcoming'
-
-        if mode == 'results':
-          results_mode = True
+        # Month boundaries for the games queryset. Use a half-open interval
+        # [first_day, next_first) so we don't have to think about month length.
+        first_day = date(year, month, 1)
+        if month == 12:
+            next_first = date(year + 1, 1, 1)
         else:
-          results_mode = False
+            next_first = date(year, month + 1, 1)
 
-        # Date tabs: next 7 days for upcoming, last 7 days for results
-        if results_mode:
-            upcoming_dates = [today - timedelta(days=i) for i in range(7)]
-        else:
-            upcoming_dates = [today + timedelta(days=i) for i in range(7)]
-
-        # Determine whether "Show All" was requested
-        # Results mode defaults to "all" when no date param is given
-        date_param = self.request.GET.get('date', 'all' if results_mode else str(today))
-        show_all = (date_param == 'all')
-
-        if show_all:
-            selected_date = None
-        else:
-            try:
-                selected_date = date.fromisoformat(date_param)
-            except ValueError:
-                selected_date = today
-
-        # ─────────────────────────── Shared prefetch setup ───────────────────────────
-        def base_qs(status_filter):
-            return (
-                Game.objects
-                .filter(status=status_filter)
-                .select_related('home_team', 'away_team')
-                .prefetch_related(
-                    Prefetch(
-                        'home_team__season_stats',
-                        queryset=TeamSeasonStats.objects.filter(season=season_year),
-                        to_attr='_current_stats',
-                    ),
-                    Prefetch(
-                        'away_team__season_stats',
-                        queryset=TeamSeasonStats.objects.filter(season=season_year),
-                        to_attr='_current_stats',
-                    ),
-                    # Bulk-load per-game box score rows so completed games can show
-                    # actual GameTeamStats (vs. season averages) without N+1 queries.
-                    Prefetch(
-                        'team_stats',
-                        queryset=GameTeamStats.objects.select_related('team'),
-                    ),
-                )
-                .order_by('-start_date' if results_mode else 'start_date')
+        # Pull every game in this month (scheduled, final, or otherwise).
+        # We don't filter on status because we want to show both played and
+        # unplayed games — color is decided per-game below.
+        #
+        # The team_stats prefetch loads each game's GameTeamStats rows so the
+        # overflow modal can render real box scores (vs. just season averages)
+        # for completed games — same shape as the old head_head.html cards.
+        qs = (
+            Game.objects
+            .filter(start_date__date__gte=first_day,
+                    start_date__date__lt=next_first)
+            .select_related('home_team', 'away_team')
+            .prefetch_related(
+                Prefetch(
+                    'home_team__season_stats',
+                    queryset=TeamSeasonStats.objects.filter(season=season_year),
+                    to_attr='_current_stats',
+                ),
+                Prefetch(
+                    'away_team__season_stats',
+                    queryset=TeamSeasonStats.objects.filter(season=season_year),
+                    to_attr='_current_stats',
+                ),
+                Prefetch(
+                    'team_stats',
+                    queryset=GameTeamStats.objects.select_related('team'),
+                ),
             )
+            .order_by('start_date')
+        )
+        games_list = list(qs)
 
-        # ───────────────────────────── Per-game average helpers ─────────────────────────────
+        # Run predictions for *every* game in one batched predict() call.
+        # We predict on unplayed games too so the calendar can show who the
+        # model thinks will win (neutral pill); just because a game is in the
+        # future doesn't mean we shouldn't render the predicted favorite.
+        pred_model = _get_predict_model()
+        predictions = _batch_predict_home_wins(games_list, pred_model)
+
+        # Per-game season-average helpers — same logic as the old head_head
+        # template used so the modal cards look identical to the old page.
         def avg(stat_obj, field):
             if stat_obj is None:
                 return None
-            total       = getattr(stat_obj, field, None)
+            total = getattr(stat_obj, field, None)
             games_played = getattr(stat_obj, 'games', None)
             if total and games_played:
                 return round(total / games_played, 1)
@@ -800,150 +964,417 @@ class UpcomingView(TemplateView):
             val = getattr(stat_obj, field, None)
             return round(val, 1) if val is not None else None
 
-        # Load the prediction model once for this whole request. enrich_qs may be
-        # called twice (e.g. all_qs + games_qs in upcoming mode) and previously
-        # each game reloaded the .pkl from disk via predict_game().
-        pred_model = _get_predict_model()
+        # Group games by local date. start_date is a tz-aware datetime, so
+        # we localize to the project's timezone to avoid having a 10pm ET
+        # game show up on the next calendar day.
+        games_by_day = defaultdict(list)
+        for g in games_list:
+            if not g.start_date:
+                continue
+            local_dt = timezone.localtime(g.start_date)
+            d = local_dt.date()
 
-        # ──────────────── Enrich queryset into template-friendly list of dicts ──────────────
-        def enrich_qs(qs):
-            result = []
-            for game in qs:
-                h_stats  = game.home_team.current_season
-                a_stats = game.away_team.current_season
+            is_played = (g.status == 'final' and g.home_winner is not None)
+            pred_home_win = predictions.get(g.id)  # bool or None
 
-                # Run prediction using the preloaded model. _predict_home_win
-                # handles missing stats and divide-by-zero by returning None.
-                prediction = None
-                if h_stats and a_stats:
-                    home_adv = 0 if game.neutral_site else 1
-                    is_home_win = _predict_home_win(pred_model, h_stats, a_stats, home_adv)
-                    if is_home_win is not None:
-                        prediction = {
-                            'winner': game.home_team if is_home_win else game.away_team,
-                            'is_home_win': is_home_win,
-                        }
+            # Decide the cell color:
+            #   correct    — model agreed with the actual home/away winner
+            #   incorrect  — model disagreed with the actual winner
+            #   unplayed   — game still scheduled / hasn't finished
+            #   no_prediction — game finished but feature stats were missing
+            if is_played and pred_home_win is not None:
+                actual_home_win = bool(g.home_winner)
+                status = 'correct' if pred_home_win == actual_home_win else 'incorrect'
+            elif is_played:
+                status = 'no_prediction'
+            else:
+                status = 'unplayed'
 
-                # Actual result (only meaningful for completed games)
-                actual = None
-                if (game.home_winner and game.away_winner) is not None:
-                    actual = {
-                        'winner': game.home_team if game.home_winner else game.away_team,
-                        'home_points': game.home_points,
-                        'away_points': game.away_points,
-                    }
+            predicted_winner = None
+            prediction_dict = None
+            if pred_home_win is not None:
+                predicted_winner = g.home_team if pred_home_win else g.away_team
+                prediction_dict = {
+                    'winner': predicted_winner,
+                    'is_home_win': pred_home_win,
+                }
 
-                # Compare prediction to actual outcome
-                prediction_correct = None
-                if prediction and actual:
-                    prediction_correct = (prediction['winner'].id == actual['winner'].id)
+            actual = None
+            if is_played:
+                actual = {
+                    'winner': g.home_team if g.home_winner else g.away_team,
+                    'home_points': g.home_points,
+                    'away_points': g.away_points,
+                }
 
-                # Per-game box score rows from the prefetch cache (no extra DB hit).
-                # Will be None for upcoming games — template falls back to season averages.
-                home_game_stats = None
-                away_game_stats = None
-                for stat in game.team_stats.all():
-                    if stat.team_id == game.home_team_id:
-                        home_game_stats = stat
-                    elif stat.team_id == game.away_team_id:
-                        away_game_stats = stat
+            prediction_correct = None
+            if prediction_dict and actual:
+                prediction_correct = (prediction_dict['winner'].id == actual['winner'].id)
 
-                result.append({
-                    'game': game,
-                    'home_team': game.home_team,
-                    'away_team': game.away_team,
-                    'prediction': prediction,
-                    'actual': actual,
-                    'prediction_correct': prediction_correct,
-                    'home_game_stats': home_game_stats,  # GameTeamStats or None
-                    'away_game_stats': away_game_stats,  # GameTeamStats or None
-                    'home_stats': {
-                        'pts': avg(h_stats,  'off_points'),
-                        'fgp': pct(h_stats,  'off_fg_pct'),
-                        'tpp': pct(h_stats,  'off_3pt_pct'),
-                        'ftp': pct(h_stats,  'off_ft_pct'),
-                        'reb': avg(h_stats,  'off_reb_total'),
-                        'oreb':avg(h_stats,  'off_reb_offensive'),
-                        'ast': avg(h_stats,  'off_assists'),
-                        'stl': avg(h_stats,  'off_steals'),
-                        'blk': avg(h_stats,  'off_blocks'),
-                        'tov': avg(h_stats,  'off_turnovers'),
-                    },
-                    'away_stats': {
-                        'pts': avg(a_stats, 'off_points'),
-                        'fgp': pct(a_stats, 'off_fg_pct'),
-                        'tpp': pct(a_stats, 'off_3pt_pct'),
-                        'ftp': pct(a_stats, 'off_ft_pct'),
-                        'reb': avg(a_stats, 'off_reb_total'),
-                        'oreb':avg(a_stats, 'off_reb_offensive'),
-                        'ast': avg(a_stats, 'off_assists'),
-                        'stl': avg(a_stats, 'off_steals'),
-                        'blk': avg(a_stats, 'off_blocks'),
-                        'tov': avg(a_stats, 'off_turnovers'),
-                    },
+            # Per-game box score from the prefetch cache — rows are present
+            # only for completed games. Modal cards fall back to season
+            # averages when these are None (matching old head_head.html).
+            home_game_stats = None
+            away_game_stats = None
+            for stat in g.team_stats.all():
+                if stat.team_id == g.home_team_id:
+                    home_game_stats = stat
+                elif stat.team_id == g.away_team_id:
+                    away_game_stats = stat
+
+            h_stats = g.home_team.current_season
+            a_stats = g.away_team.current_season
+
+            games_by_day[d].append({
+                'game': g,
+                'home_team': g.home_team,
+                'away_team': g.away_team,
+                'status': status,
+                'predicted_winner': predicted_winner,
+                'prediction': prediction_dict,
+                'actual': actual,
+                'prediction_correct': prediction_correct,
+                'home_game_stats': home_game_stats,
+                'away_game_stats': away_game_stats,
+                'home_stats': {
+                    'pts': avg(h_stats, 'off_points'),
+                    'fgp': pct(h_stats, 'off_fg_pct'),
+                    'tpp': pct(h_stats, 'off_3pt_pct'),
+                    'ftp': pct(h_stats, 'off_ft_pct'),
+                    'reb': avg(h_stats, 'off_reb_total'),
+                    'oreb': avg(h_stats, 'off_reb_offensive'),
+                    'ast': avg(h_stats, 'off_assists'),
+                    'stl': avg(h_stats, 'off_steals'),
+                    'blk': avg(h_stats, 'off_blocks'),
+                    'tov': avg(h_stats, 'off_turnovers'),
+                },
+                'away_stats': {
+                    'pts': avg(a_stats, 'off_points'),
+                    'fgp': pct(a_stats, 'off_fg_pct'),
+                    'tpp': pct(a_stats, 'off_3pt_pct'),
+                    'ftp': pct(a_stats, 'off_ft_pct'),
+                    'reb': avg(a_stats, 'off_reb_total'),
+                    'oreb': avg(a_stats, 'off_reb_offensive'),
+                    'ast': avg(a_stats, 'off_assists'),
+                    'stl': avg(a_stats, 'off_steals'),
+                    'blk': avg(a_stats, 'off_blocks'),
+                    'tov': avg(a_stats, 'off_turnovers'),
+                },
+                'start_local': local_dt,
+                'home_points': g.home_points,
+                'away_points': g.away_points,
+                'is_played': is_played,
+            })
+
+        # Build the 6×7 (give or take) calendar grid. monthdatescalendar()
+        # pads the first/last weeks with days from adjacent months so each
+        # row is always 7 cells. firstweekday=6 = Sunday-first.
+        #
+        # Each cell carries:
+        #   games            — full list of game items for the day
+        #   visible_games    — first CAL_PILL_CAP items, rendered as pills in-cell
+        #   overflow_count   — count of games hidden behind the "+N more" pill
+        #   modal_id         — DOM id of this day's overflow modal (only used
+        #                       when overflow_count > 0; deterministic so the
+        #                       template can reference it without extra ctx)
+        cal = calendar.Calendar(firstweekday=6)
+        pill_cap = self.CAL_PILL_CAP
+        weeks = []
+        modal_days = []
+        for week in cal.monthdatescalendar(year, month):
+            week_cells = []
+            for d in week:
+                day_games = games_by_day.get(d, [])
+                overflow = max(0, len(day_games) - pill_cap)
+                modal_id = f'day-modal-{d.isoformat()}'
+                week_cells.append({
+                    'date': d,
+                    'in_month': d.month == month,
+                    'is_today': d == today,
+                    'games': day_games,
+                    'visible_games': day_games[:pill_cap],
+                    'overflow_count': overflow,
+                    'modal_id': modal_id,
                 })
-            return result
+                # Build modals only for in-month days that overflow. Out-of-
+                # month padding shouldn't generate modals — those games will
+                # show up properly when the user navigates to that month.
+                if overflow > 0 and d.month == month:
+                    modal_days.append({
+                        'date': d,
+                        'modal_id': modal_id,
+                        'total_games': len(day_games),
+                        'games': day_games,
+                    })
+            weeks.append(week_cells)
 
-        # ────────────────────────── Build querysets based on mode ───────────────────────────
+        # Prev / next month navigation. Roll year over at the boundaries.
+        prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+        next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+
+        # Season-wide accuracy banner (cached). The CacheWarmerMiddleware
+        # populates this in the background on first request, so reading from
+        # the cache is the fast path. If the cache is empty (e.g. a cold
+        # worker), fall back to a synchronous compute — same logic the old
+        # results page used.
+        current_season_year = _current_season_year()
+        accuracy_key = ACCURACY_CACHE_KEY.format(season_year=current_season_year)
+        season_accuracy = cache.get(accuracy_key)
+        if season_accuracy is None:
+            season_accuracy = _warm_season_accuracy(current_season_year)
+
+        context.update({
+            'weeks': weeks,
+            'modal_days': modal_days,
+            'pill_cap': pill_cap,
+            'year': year,
+            'month': month,
+            'month_name': calendar.month_name[month],
+            'prev_year': prev_year,
+            'prev_month': prev_month,
+            'next_year': next_year,
+            'next_month': next_month,
+            'today': today,
+            'season_year': season_year,
+            'is_current_month': (year == today.year and month == today.month),
+            'accuracy': season_accuracy,
+            'weekday_labels': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        })
+
+    def _build_list_context(self, context):
+        """Populate `context` for the original head-to-head list view.
+
+        This is the pre-calendar logic restored verbatim — see the docstring
+        on UpcomingView for the URL params and context variable contract.
+        """
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+
+        # Season field stores the starting year. Games from Nov-Dec use the
+        # same year, games from Jan-Jun are year-1. We use the shared
+        # _current_season_year() helper so the list view's prefetched
+        # season stats line up with the calendar view's — otherwise the
+        # same game's prediction features differ between views and can
+        # show as "correct" in one and "incorrect" in the other.
+        season_year = _current_season_year()
+
+        # Timezone-aware "start of today" for DateTimeField comparisons.
+        today_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+
+        # Sub-mode: upcoming (default) vs. results.
+        mode = self.request.GET.get('mode', 'upcoming')
+        if mode not in ('upcoming', 'results'):
+            mode = 'upcoming'
+        results_mode = (mode == 'results')
+
+        # Date tabs: next 7 days for upcoming, last 7 days for results.
         if results_mode:
-            finished_qs = base_qs("final").filter(home_winner__isnull=False)
+            upcoming_dates = [today - timedelta(days=i) for i in range(7)]
+        else:
+            upcoming_dates = [today + timedelta(days=i) for i in range(7)]
+
+        # Determine whether "Show All" was requested. Results mode defaults
+        # to "all" when no date param is given.
+        date_param = self.request.GET.get('date', 'all' if results_mode else str(today))
+        show_all = (date_param == 'all')
+
+        if show_all:
+            selected_date = None
+        else:
+            try:
+                selected_date = date.fromisoformat(date_param)
+            except ValueError:
+                selected_date = today
+
+        # ── Single season-wide queryset ─────────────────────────────────
+        # We pull EVERY game in the current season (scheduled + final) once,
+        # enrich it once, and use the enriched list for both the visible
+        # cards (filtered + paginated by mode) and the global search pool
+        # rendered into the search-results panel. The big win: the search
+        # bar finds any game the user types — past or future — without
+        # being limited to whatever 50 cards happen to be on the current
+        # paginated page. The trade-off is one heavier server pass instead
+        # of the previous "small visible queryset + small pool" approach.
+        season_qs = (
+            Game.objects
+            .filter(season=season_year)
+            .select_related('home_team', 'away_team')
+            .prefetch_related(
+                Prefetch(
+                    'home_team__season_stats',
+                    queryset=TeamSeasonStats.objects.filter(season=season_year),
+                    to_attr='_current_stats',
+                ),
+                Prefetch(
+                    'away_team__season_stats',
+                    queryset=TeamSeasonStats.objects.filter(season=season_year),
+                    to_attr='_current_stats',
+                ),
+                Prefetch(
+                    'team_stats',
+                    queryset=GameTeamStats.objects.select_related('team'),
+                ),
+            )
+            .order_by('start_date')  # ascending; we reverse for results display below
+        )
+        season_games = list(season_qs)
+
+        # Per-game average helpers.
+        def avg(stat_obj, field):
+            if stat_obj is None:
+                return None
+            total = getattr(stat_obj, field, None)
+            games_played = getattr(stat_obj, 'games', None)
+            if total and games_played:
+                return round(total / games_played, 1)
+            return None
+
+        def pct(stat_obj, field):
+            if stat_obj is None:
+                return None
+            val = getattr(stat_obj, field, None)
+            return round(val, 1) if val is not None else None
+
+        # Load the prediction model once and run a single batched predict()
+        # over the entire season. This is the key perf move — XGBoost has
+        # ~5-50ms of fixed overhead per call, so the previous per-game loop
+        # would have timed out on a 7000+ game season. _batch_predict_home_wins
+        # builds one DataFrame and returns {game_id: predicted_home_win bool}.
+        pred_model = _get_predict_model()
+        predictions = _batch_predict_home_wins(season_games, pred_model)
+
+        def enrich_one(game):
+            h_stats = game.home_team.current_season
+            a_stats = game.away_team.current_season
+
+            is_home_win = predictions.get(game.id)
+            prediction = None
+            if is_home_win is not None:
+                prediction = {
+                    'winner': game.home_team if is_home_win else game.away_team,
+                    'is_home_win': is_home_win,
+                }
+
+            # `actual` is meaningful only for completed games. The earlier
+            # `if (game.home_winner and game.away_winner) is not None` is a
+            # truthiness bug that misses False winners; this version is
+            # correct.
+            actual = None
+            if game.home_winner is not None and game.away_winner is not None:
+                actual = {
+                    'winner': game.home_team if game.home_winner else game.away_team,
+                    'home_points': game.home_points,
+                    'away_points': game.away_points,
+                }
+
+            prediction_correct = None
+            if prediction and actual:
+                prediction_correct = (prediction['winner'].id == actual['winner'].id)
+
+            home_game_stats = None
+            away_game_stats = None
+            for stat in game.team_stats.all():
+                if stat.team_id == game.home_team_id:
+                    home_game_stats = stat
+                elif stat.team_id == game.away_team_id:
+                    away_game_stats = stat
+
+            return {
+                'game': game,
+                'home_team': game.home_team,
+                'away_team': game.away_team,
+                'prediction': prediction,
+                'actual': actual,
+                'prediction_correct': prediction_correct,
+                'home_game_stats': home_game_stats,
+                'away_game_stats': away_game_stats,
+                'home_stats': {
+                    'pts': avg(h_stats, 'off_points'),
+                    'fgp': pct(h_stats, 'off_fg_pct'),
+                    'tpp': pct(h_stats, 'off_3pt_pct'),
+                    'ftp': pct(h_stats, 'off_ft_pct'),
+                    'reb': avg(h_stats, 'off_reb_total'),
+                    'oreb': avg(h_stats, 'off_reb_offensive'),
+                    'ast': avg(h_stats, 'off_assists'),
+                    'stl': avg(h_stats, 'off_steals'),
+                    'blk': avg(h_stats, 'off_blocks'),
+                    'tov': avg(h_stats, 'off_turnovers'),
+                },
+                'away_stats': {
+                    'pts': avg(a_stats, 'off_points'),
+                    'fgp': pct(a_stats, 'off_fg_pct'),
+                    'tpp': pct(a_stats, 'off_3pt_pct'),
+                    'ftp': pct(a_stats, 'off_ft_pct'),
+                    'reb': avg(a_stats, 'off_reb_total'),
+                    'oreb': avg(a_stats, 'off_reb_offensive'),
+                    'ast': avg(a_stats, 'off_assists'),
+                    'stl': avg(a_stats, 'off_steals'),
+                    'blk': avg(a_stats, 'off_blocks'),
+                    'tov': avg(a_stats, 'off_turnovers'),
+                },
+            }
+
+        # Enrich the entire season once. This is the single source of
+        # truth for everything below — visible cards AND the search pool.
+        all_games = [enrich_one(g) for g in season_games]
+
+        # Build the visible `games` list as a filter over the enriched pool.
+        # We avoid running predictions twice by reusing the same dicts.
+        if results_mode:
+            # Only completed games with a known winner are eligible.
+            finished = [
+                item for item in all_games
+                if item['game'].status == 'final' and item['game'].home_winner is not None
+            ]
+            # Results page lists most-recent-first.
+            finished.sort(
+                key=lambda item: item['game'].start_date or datetime.min,
+                reverse=True,
+            )
 
             if show_all:
-                # Paginate the RAW queryset first (fast — no predictions)
-                paginator = Paginator(finished_qs, 50)
+                paginator = Paginator(finished, 50)
                 page_number = self.request.GET.get('page', 1)
                 page_obj = paginator.get_page(page_number)
                 context['page_obj'] = page_obj
-
-                # Only run predictions on this page's 50 games
-                games = enrich_qs(page_obj.object_list)
+                games = list(page_obj.object_list)
             else:
-                games_qs = finished_qs.filter(start_date__date=selected_date)
-                games = enrich_qs(games_qs)
+                games = [
+                    item for item in finished
+                    if item['game'].start_date
+                    and item['game'].start_date.date() == selected_date
+                ]
 
-            # ── Model accuracy across EVERY completed game this season ──
-            # We always compute over the full season (not just the displayed slice)
-            # so the banner reflects true model performance.
-            #
-            # Perf note: previously this iterated games one-at-a-time and called
-            # pred_model.predict() on a 1-row DataFrame for each — XGBoost has
-            # ~5-50ms of fixed per-call overhead, so over ~5,000 finished games
-            # the request blew past the gunicorn worker timeout on a cold cache.
-            # We now build features for every eligible game into a single
-            # DataFrame and call predict() exactly once. This drops the cold
-            # request from ~30s+ (timeout) to ~1-2s. Cached for 1 hour since the
-            # underlying season stats only refresh on data sync.
             accuracy_key = ACCURACY_CACHE_KEY.format(season_year=season_year)
             season_accuracy = cache.get(accuracy_key)
             if season_accuracy is None:
-                # Cache miss — fall back to a synchronous compute. Normally
-                # CacheWarmerMiddleware will have populated this in the
-                # background by the time the user clicks through to results.
                 season_accuracy = _warm_season_accuracy(season_year)
-
             context['accuracy'] = season_accuracy
-
-            # Search filters the current page's cards via JS — no separate pool needed
-            all_games = []
-
         else:
-            # Upcoming scheduled games
-            all_qs = base_qs("scheduled").filter(start_date__gte=today_start)
+            # Upcoming = scheduled and not in the past.
+            scheduled = [
+                item for item in all_games
+                if item['game'].status == 'scheduled'
+                and item['game'].start_date
+                and item['game'].start_date >= today_start
+            ]
+            # season_qs is already start_date ascending, so scheduled is too.
 
             if show_all:
-                games_qs = all_qs
+                games = scheduled
             else:
-                games_qs = base_qs("scheduled").filter(start_date__date=selected_date)
+                games = [
+                    item for item in scheduled
+                    if item['game'].start_date.date() == selected_date
+                ]
 
-            all_games = enrich_qs(all_qs)
-            games = enrich_qs(games_qs)
-
-        context['mode']  = mode
-        context['games'] = games
-        context['all_games'] = all_games
-        context['show_all'] = show_all
-        context['upcoming_dates'] = upcoming_dates
-        context['selected_date'] = selected_date
-        context['today'] = today
-        context['tomorrow'] = tomorrow
-        return context
+        context.update({
+            'mode': mode,
+            'games': games,
+            'all_games': all_games,
+            'show_all': show_all,
+            'upcoming_dates': upcoming_dates,
+            'selected_date': selected_date,
+            'today': today,
+            'tomorrow': tomorrow,
+        })
