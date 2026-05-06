@@ -271,8 +271,14 @@ class TeamSeasonStats(models.Model):
     on_delete = models.CASCADE,     # if a team is deleted, remove all its stats too
     related_name = 'season_stats',  # enables team.season_stats.all()
   )
-  season = models.IntegerField()                    # the starting year of the season, e.g. 2024 means the 2024-25 season
-  season_label = models.CharField(max_length = 20)  # human-readable label, e.g. "2024-25"
+  # `season` stores the ENDING calendar year of the CBB season, NOT the
+  # starting year. e.g. season=2026 paired with season_label='20252026'
+  # means the 2025-26 season. This convention is set by the upstream API
+  # and propagates through the prefetches in UpcomingView — see
+  # _current_season_year() in views.py for the formula that converts a
+  # date to its season value (Nov-Dec → today.year+1, Jan-Jun → today.year).
+  season = models.IntegerField()
+  season_label = models.CharField(max_length = 20)  # e.g. "20242025" (concatenated start-end years)
 
   # --- Game totals ---
   games = models.IntegerField(null = True, blank = True)
@@ -397,8 +403,12 @@ class Game(models.Model):
   # --- Identity ---
   id = models.BigAutoField(primary_key=True)
   source_id = models.CharField(max_length=50, null=True, blank=True)   # API's string ID for this game
-  season = models.IntegerField()                                       # e.g. 2025 for the 2025-26 season
-  season_label = models.CharField(max_length=20)                       # e.g. "2025-26"
+  # ENDING year of the CBB season (e.g. season=2026 ↔ '20252026' = 2025-26).
+  # See TeamSeasonStats.season above for the full convention; both fields
+  # use the same value, which lets the prefetches in UpcomingView line up
+  # game.season with team.season_stats.season.
+  season = models.IntegerField()
+  season_label = models.CharField(max_length=20)                       # e.g. "20252026"
   season_type = models.CharField(max_length=20, null=True, blank=True) # "regular", "postseason"
   tournament = models.CharField(max_length=100, null=True, blank=True) # e.g. "NCAA Tournament", "NIT"
   game_type = models.CharField(max_length=50, null=True, blank=True)
