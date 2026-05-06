@@ -5,7 +5,6 @@
   },
   "deploy": {
     "startCommand": "uv run python manage.py update_data",
-    "cronSchedule": "0 6 * * *",
     "restartPolicyType": "NEVER"
   }
 }
