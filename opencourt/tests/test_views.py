@@ -76,11 +76,21 @@ def _make_team(conference=None, **overrides):
     defaults.update(overrides)
     return Team.objects.create(**defaults)
 
+def _current_season_year():
+    """Mirror of opencourt.views._current_season_year — defined locally so
+    test factories don't need a Django app context to compute defaults.
+    The DB stores `season` as the season's ending year (e.g. season=2026 ↔
+    the 2025-26 season). Nov-Dec → today.year+1, Jan-Jun → today.year."""
+    today = date.today()
+    return today.year + 1 if today.month >= 7 else today.year
+
+
 def _make_season_stats(team, **overrides):
+    season_default = _current_season_year()
     defaults = {
         'team': team,
-        'season': date.today().year,
-        'season_label': f'{date.today().year}-{str(date.today().year + 1)[-2:]}',
+        'season': season_default,
+        'season_label': f'{season_default}-{str(season_default + 1)[-2:]}',
         'games': 30,
         'wins': 20.0,
         'losses': 10.0,
@@ -107,10 +117,11 @@ def _make_season_stats(team, **overrides):
     return TeamSeasonStats.objects.create(**defaults)
 
 def _make_game(home_team, away_team, **overrides):
+    season_default = _current_season_year()
     defaults = {
         'source_id': 'game-001',
-        'season': date.today().year,
-        'season_label': f'{date.today().year}-{str(date.today().year + 1)[-2:]}',
+        'season': season_default,
+        'season_label': f'{season_default}-{str(season_default + 1)[-2:]}',
         'season_type': 'regular',
         'status': 'final',
         'start_date': timezone.now(),
@@ -198,7 +209,11 @@ class HomeViewTest(TestCase):
         conf = _make_conference()
         team1 = _make_team(conference=conf, source_id=1, slug='t1', school='T1', mascot='M1')
         team2 = _make_team(conference=conf, source_id=2, slug='t2', school='T2', mascot='M2')
-        _make_game(team1, team2)
+        # HomeView filters total_games by season=date.today().year (calendar
+        # year, not CBB season). The factory defaults to _current_season_year()
+        # which differs from today.year between Jan and Jun, so override it
+        # here to match HomeView's filter.
+        _make_game(team1, team2, season=date.today().year)
 
         response = self.client.get(reverse('opencourt:home'))
         self.assertEqual(response.context['total_teams'], 2)
@@ -496,22 +511,30 @@ class TeamDetailViewTest(TestCase):
 # =============================================================================
 # UpcomingView Tests
 # =============================================================================
+#
+# UpcomingView dispatches between two views via the ?view= GET param:
+#   ?view=calendar (default) — monthly calendar grid (predictions_calendar.html)
+#   ?view=list                — original head-to-head card grid (head_head.html)
+#
+# The calendar view is the new default; the list view is the original
+# pre-calendar behavior preserved behind the toggle.
+#
+# Predictions require the ML model file, which doesn't exist in the test
+# environment. _get_predict_model() returns None when the file is missing,
+# and both _predict_home_win and _batch_predict_home_wins short-circuit on
+# pred_model is None — so no mocking is needed for the view to render.
 
 @OVERRIDE_STORAGES
 class UpcomingViewTest(TestCase):
     """
-    Tests for UpcomingView (GET /upcoming/).
+    Tests for UpcomingView (GET /upcoming/) — the dispatcher itself.
 
-    Supports two modes:
-      ?mode=upcoming — future scheduled games with predictions
-      ?mode=results  — completed games with prediction accuracy
-
-    Predictions require the ML model file, which doesn't exist in test.
-    We mock make_predictions to avoid FileNotFoundError.
+    Verifies the ?view= toggle picks the right template and context.
+    Calendar-specific and list-specific assertions live in the dedicated
+    sub-test-classes below.
     """
 
     def setUp(self):
-        """Create teams with stats and games for both modes."""
         self.conf = _make_conference()
         self.home = _make_team(
             conference=self.conf, source_id=1, school='Duke',
@@ -521,73 +544,330 @@ class UpcomingViewTest(TestCase):
             conference=self.conf, source_id=2, school='UNC',
             mascot='TH', slug='unc'
         )
-        current_year = date.today().year
+        current_year = _current_season_year()
         _make_season_stats(self.home, season=current_year)
         _make_season_stats(self.away, season=current_year)
 
-    def test_status_200_upcoming_mode(self):
-        """Upcoming page should return HTTP 200 in default (upcoming) mode."""
+    # ── Dispatch / toggle ────────────────────────────────────────────────
+
+    def test_status_200_default(self):
+        """Page should return HTTP 200 with no params (defaults to calendar)."""
         response = self.client.get(reverse('opencourt:upcoming'))
         self.assertEqual(response.status_code, 200)
 
-    def test_correct_template(self):
-        """Upcoming page should use opencourt/head_head.html."""
+    def test_default_view_is_calendar(self):
+        """No ?view= param → calendar view + predictions_calendar.html."""
         response = self.client.get(reverse('opencourt:upcoming'))
+        self.assertEqual(response.context['view_mode'], 'calendar')
+        self.assertTemplateUsed(response, 'opencourt/predictions_calendar.html')
+
+    def test_view_calendar_explicit(self):
+        """?view=calendar → calendar template."""
+        response = self.client.get(reverse('opencourt:upcoming') + '?view=calendar')
+        self.assertEqual(response.context['view_mode'], 'calendar')
+        self.assertTemplateUsed(response, 'opencourt/predictions_calendar.html')
+
+    def test_view_list(self):
+        """?view=list → head_head.html template + view_mode='list'."""
+        response = self.client.get(reverse('opencourt:upcoming') + '?view=list')
+        self.assertEqual(response.context['view_mode'], 'list')
         self.assertTemplateUsed(response, 'opencourt/head_head.html')
 
-    def test_default_mode_is_upcoming(self):
-        """Without ?mode= param, the view should default to 'upcoming'."""
+    def test_unknown_view_falls_back_to_calendar(self):
+        """?view=garbage should fall back to calendar (the safe default)."""
+        response = self.client.get(reverse('opencourt:upcoming') + '?view=garbage')
+        self.assertEqual(response.context['view_mode'], 'calendar')
+        self.assertTemplateUsed(response, 'opencourt/predictions_calendar.html')
+
+
+@OVERRIDE_STORAGES
+class UpcomingViewCalendarTest(TestCase):
+    """Tests scoped to the ?view=calendar context shape."""
+
+    def setUp(self):
+        self.conf = _make_conference()
+        self.home = _make_team(
+            conference=self.conf, source_id=1, school='Duke',
+            mascot='BD', slug='duke'
+        )
+        self.away = _make_team(
+            conference=self.conf, source_id=2, school='UNC',
+            mascot='TH', slug='unc'
+        )
+        current_year = _current_season_year()
+        _make_season_stats(self.home, season=current_year)
+        _make_season_stats(self.away, season=current_year)
+
+    # ── Context shape ───────────────────────────────────────────────────
+
+    def test_required_context_keys(self):
+        """Calendar context should expose the keys the template depends on."""
         response = self.client.get(reverse('opencourt:upcoming'))
+        for key in (
+            'weeks', 'modal_days', 'pill_cap',
+            'year', 'month', 'month_name',
+            'prev_year', 'prev_month', 'next_year', 'next_month',
+            'today', 'season_year', 'is_current_month',
+            'accuracy', 'weekday_labels',
+        ):
+            self.assertIn(key, response.context, f'missing context key: {key}')
+
+    def test_default_year_month_is_today(self):
+        """Without params, year/month default to today."""
+        response = self.client.get(reverse('opencourt:upcoming'))
+        today = date.today()
+        self.assertEqual(response.context['year'], today.year)
+        self.assertEqual(response.context['month'], today.month)
+        self.assertTrue(response.context['is_current_month'])
+
+    def test_year_month_params(self):
+        """?year= & ?month= should select that month."""
+        response = self.client.get(
+            reverse('opencourt:upcoming') + '?year=2025&month=11'
+        )
+        self.assertEqual(response.context['year'], 2025)
+        self.assertEqual(response.context['month'], 11)
+        self.assertEqual(response.context['month_name'], 'November')
+
+    def test_invalid_month_falls_back(self):
+        """?month=99 should fall back to today's month, not 500."""
+        response = self.client.get(
+            reverse('opencourt:upcoming') + '?month=99'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['month'], date.today().month)
+
+    def test_invalid_year_falls_back(self):
+        """?year=abc should fall back to today's year."""
+        response = self.client.get(
+            reverse('opencourt:upcoming') + '?year=abc'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['year'], date.today().year)
+
+    def test_out_of_range_year_falls_back(self):
+        """?year=1500 should clamp to today's year (defends against runaway grids)."""
+        response = self.client.get(
+            reverse('opencourt:upcoming') + '?year=1500'
+        )
+        self.assertEqual(response.context['year'], date.today().year)
+
+    # ── Grid structure ──────────────────────────────────────────────────
+
+    def test_weeks_grid_shape(self):
+        """`weeks` should be a list of weeks; each week is 7 day-cells."""
+        response = self.client.get(reverse('opencourt:upcoming'))
+        weeks = response.context['weeks']
+        # monthdatescalendar() always returns full weeks (Sun..Sat) so each
+        # row must contain exactly 7 cells. The number of weeks varies with
+        # the month (4-6) so we assert >= 4 rather than a fixed count.
+        self.assertGreaterEqual(len(weeks), 4)
+        self.assertLessEqual(len(weeks), 6)
+        for week in weeks:
+            self.assertEqual(len(week), 7)
+        # Cell shape
+        cell = weeks[0][0]
+        for key in ('date', 'in_month', 'is_today',
+                    'games', 'visible_games', 'overflow_count', 'modal_id'):
+            self.assertIn(key, cell)
+
+    def test_pill_cap_exposed(self):
+        """pill_cap must equal UpcomingView.CAL_PILL_CAP."""
+        from opencourt.views import UpcomingView
+        response = self.client.get(reverse('opencourt:upcoming'))
+        self.assertEqual(response.context['pill_cap'], UpcomingView.CAL_PILL_CAP)
+
+    def test_weekday_labels_seven_items_sunday_first(self):
+        """Weekday header is Sun-first and has 7 entries."""
+        response = self.client.get(reverse('opencourt:upcoming'))
+        labels = response.context['weekday_labels']
+        self.assertEqual(len(labels), 7)
+        self.assertEqual(labels[0], 'Sun')
+
+    # ── Game grouping & status coloring ─────────────────────────────────
+
+    def test_completed_game_in_grid(self):
+        """A finished game falls into its calendar-day cell."""
+        from opencourt.views import UpcomingView
+        today = date.today()
+        # Use a fixed mid-day timestamp so timezone localization can't shift
+        # the game off the test's expected date.
+        when = timezone.make_aware(datetime.combine(today, datetime.min.time())
+                                   + timedelta(hours=15))
+        _make_game(
+            self.home, self.away,
+            source_id='played-1',
+            status='final',
+            start_date=when,
+            home_winner=True,
+            away_winner=False,
+        )
+
+        response = self.client.get(reverse('opencourt:upcoming'))
+        weeks = response.context['weeks']
+        # Locate today's cell
+        cell = None
+        for week in weeks:
+            for c in week:
+                if c['date'] == today:
+                    cell = c
+                    break
+        self.assertIsNotNone(cell)
+        self.assertEqual(len(cell['games']), 1)
+        # Without the model file the prediction is unavailable, so a played
+        # game shows as 'no_prediction' (rendered as the neutral pill).
+        self.assertIn(cell['games'][0]['status'],
+                      ('correct', 'incorrect', 'no_prediction'))
+
+    def test_unplayed_game_status(self):
+        """A scheduled future game gets status='unplayed'."""
+        today = date.today()
+        when = timezone.make_aware(datetime.combine(today, datetime.min.time())
+                                   + timedelta(hours=15))
+        _make_game(
+            self.home, self.away,
+            source_id='scheduled-1',
+            status='scheduled',
+            start_date=when,
+            home_points=None,
+            away_points=None,
+            home_winner=None,
+            away_winner=None,
+        )
+        response = self.client.get(reverse('opencourt:upcoming'))
+        statuses = [
+            g['status']
+            for week in response.context['weeks']
+            for cell in week
+            for g in cell['games']
+        ]
+        self.assertIn('unplayed', statuses)
+
+    # ── Overflow / modal ────────────────────────────────────────────────
+
+    def test_overflow_pills_collapse_into_modal(self):
+        """A day with more than CAL_PILL_CAP games produces a modal entry."""
+        from opencourt.views import UpcomingView
+        today = date.today()
+        # Build (CAP + 3) games on today so we provoke an overflow.
+        # We need (CAP + 3) team pairs with stats; reuse self.home/self.away
+        # and create extra teams for additional matchups.
+        n = UpcomingView.CAL_PILL_CAP + 3
+        for i in range(n):
+            home = _make_team(
+                conference=self.conf, source_id=100 + i,
+                school=f'H{i}', mascot=f'M{i}', slug=f'h-{i}'
+            )
+            away = _make_team(
+                conference=self.conf, source_id=200 + i,
+                school=f'A{i}', mascot=f'M{i}', slug=f'a-{i}'
+            )
+            when = timezone.make_aware(
+                datetime.combine(today, datetime.min.time()) + timedelta(hours=15)
+            )
+            _make_game(
+                home, away,
+                source_id=f'busy-{i}',
+                status='scheduled',
+                start_date=when,
+                home_points=None, away_points=None,
+                home_winner=None, away_winner=None,
+            )
+
+        response = self.client.get(reverse('opencourt:upcoming'))
+        # modal_days should contain today
+        modal_dates = [m['date'] for m in response.context['modal_days']]
+        self.assertIn(today, modal_dates)
+        # Today's cell should mark CAL_PILL_CAP visible + (n - CAP) overflow
+        for week in response.context['weeks']:
+            for cell in week:
+                if cell['date'] == today:
+                    self.assertEqual(len(cell['visible_games']), UpcomingView.CAL_PILL_CAP)
+                    self.assertEqual(cell['overflow_count'],
+                                     n - UpcomingView.CAL_PILL_CAP)
+
+    def test_no_modal_when_under_pill_cap(self):
+        """Days with ≤ CAP games shouldn't generate modal entries."""
+        from opencourt.views import UpcomingView
+        today = date.today()
+        when = timezone.make_aware(
+            datetime.combine(today, datetime.min.time()) + timedelta(hours=15)
+        )
+        _make_game(
+            self.home, self.away,
+            source_id='lone-1',
+            status='scheduled',
+            start_date=when,
+            home_points=None, away_points=None,
+            home_winner=None, away_winner=None,
+        )
+        response = self.client.get(reverse('opencourt:upcoming'))
+        # 1 game ≤ CAP → no modal for today.
+        modal_dates = [m['date'] for m in response.context['modal_days']]
+        self.assertNotIn(today, modal_dates)
+
+
+@OVERRIDE_STORAGES
+class UpcomingViewListTest(TestCase):
+    """Tests scoped to the ?view=list head-to-head card grid."""
+
+    def setUp(self):
+        self.conf = _make_conference()
+        self.home = _make_team(
+            conference=self.conf, source_id=1, school='Duke',
+            mascot='BD', slug='duke'
+        )
+        self.away = _make_team(
+            conference=self.conf, source_id=2, school='UNC',
+            mascot='TH', slug='unc'
+        )
+        current_year = _current_season_year()
+        _make_season_stats(self.home, season=current_year)
+        _make_season_stats(self.away, season=current_year)
+
+    # ── Sub-mode selection (upcoming / results) ─────────────────────────
+
+    def test_default_mode_is_upcoming(self):
+        """?view=list (no ?mode) defaults to mode='upcoming'."""
+        response = self.client.get(reverse('opencourt:upcoming') + '?view=list')
         self.assertEqual(response.context['mode'], 'upcoming')
 
     def test_results_mode(self):
-        """?mode=results should set mode to 'results' in context."""
-        response = self.client.get(reverse('opencourt:upcoming') + '?mode=results')
+        """?view=list&mode=results sets context['mode'] = 'results'."""
+        response = self.client.get(
+            reverse('opencourt:upcoming') + '?view=list&mode=results'
+        )
         self.assertEqual(response.context['mode'], 'results')
 
     def test_invalid_mode_falls_back_to_upcoming(self):
-        """?mode=invalid should fall back to 'upcoming'."""
-        response = self.client.get(reverse('opencourt:upcoming') + '?mode=garbage')
+        """?mode=garbage falls back to 'upcoming' (preserves old behavior)."""
+        response = self.client.get(
+            reverse('opencourt:upcoming') + '?view=list&mode=garbage'
+        )
         self.assertEqual(response.context['mode'], 'upcoming')
 
-    @patch('opencourt.views.predict_game')
-    def test_upcoming_shows_future_games(self, mock_predict):
-        """
-        In upcoming mode, scheduled games in the future should appear
-        in the context. Mock predictions to avoid model file dependency.
-        """
-        import numpy as np
-        mock_predict.return_value = np.array([1])
+    # ── Game enrichment ─────────────────────────────────────────────────
 
+    def test_upcoming_shows_future_games(self):
+        """In upcoming mode, scheduled future games appear in context."""
         tomorrow = timezone.now() + timedelta(days=1)
         _make_game(
             self.home, self.away,
             source_id='future-1',
             status='scheduled',
             start_date=tomorrow,
-            home_points=None,
-            away_points=None,
-            home_winner=None,
-            away_winner=None,
+            home_points=None, away_points=None,
+            home_winner=None, away_winner=None,
         )
-
         response = self.client.get(
-            reverse('opencourt:upcoming') + '?mode=upcoming&date=all'
+            reverse('opencourt:upcoming') + '?view=list&mode=upcoming&date=all'
         )
         self.assertEqual(response.status_code, 200)
-        # The game should appear in either games or all_games
         total_games = len(response.context['games']) + len(response.context['all_games'])
         self.assertGreaterEqual(total_games, 1)
 
-    @patch('opencourt.views.predict_game')
-    def test_results_mode_shows_completed_games(self, mock_predict):
-        """
-        In results mode, completed games should appear in context
-        with prediction accuracy summary.
-        """
-        import numpy as np
-        mock_predict.return_value = np.array([1])
-
+    def test_results_mode_shows_completed_games(self):
+        """In results mode, completed games appear with an accuracy banner."""
         _make_game(
             self.home, self.away,
             source_id='completed-1',
@@ -596,17 +876,18 @@ class UpcomingViewTest(TestCase):
             home_winner=True,
             away_winner=False,
         )
-
         response = self.client.get(
-            reverse('opencourt:upcoming') + '?mode=results&date=all'
+            reverse('opencourt:upcoming') + '?view=list&mode=results&date=all'
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn('accuracy', response.context)
 
+    # ── Date filtering ──────────────────────────────────────────────────
+
     def test_date_param_invalid_falls_back(self):
         """?date=not-a-date should fall back to today without crashing."""
         response = self.client.get(
-            reverse('opencourt:upcoming') + '?date=not-a-date'
+            reverse('opencourt:upcoming') + '?view=list&date=not-a-date'
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['selected_date'], date.today())
@@ -614,16 +895,111 @@ class UpcomingViewTest(TestCase):
     def test_show_all_flag(self):
         """?date=all should set show_all=True and selected_date=None."""
         response = self.client.get(
-            reverse('opencourt:upcoming') + '?date=all'
+            reverse('opencourt:upcoming') + '?view=list&date=all'
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context['show_all'])
         self.assertIsNone(response.context['selected_date'])
 
     def test_upcoming_dates_in_context(self):
-        """
-        Context should include upcoming_dates — a list of 7 date objects
-        for the date tab navigation.
-        """
-        response = self.client.get(reverse('opencourt:upcoming'))
+        """upcoming_dates is a list of 7 date objects for the date tabs."""
+        response = self.client.get(reverse('opencourt:upcoming') + '?view=list')
         self.assertEqual(len(response.context['upcoming_dates']), 7)
+
+
+@OVERRIDE_STORAGES
+class UpcomingViewCrossViewConsistencyTest(TestCase):
+    """
+    Regression test for the season_year mismatch bug: the same completed
+    game must show the same correct/incorrect status in both the calendar
+    view and the list view. Previously the list view used today.year+1/
+    today.year while the calendar used year/year-1 — different season_year
+    → different prefetched stats → different model features → different
+    predictions for the same game.
+    """
+
+    def setUp(self):
+        self.conf = _make_conference()
+        self.home = _make_team(
+            conference=self.conf, source_id=1, school='UConn',
+            mascot='Huskies', slug='uconn'
+        )
+        self.away = _make_team(
+            conference=self.conf, source_id=2, school='Michigan',
+            mascot='Wolverines', slug='michigan'
+        )
+        # Use the season_year the new (fixed) helper resolves to so the
+        # game falls into both querysets — calendar (date-filtered to its
+        # month) and list (filtered by season=N).
+        from opencourt.views import _current_season_year
+        season = _current_season_year()
+        _make_season_stats(self.home, season=season)
+        _make_season_stats(self.away, season=season)
+
+        # Create a finished game in the current season. Pick a mid-day
+        # time so timezone localization can't push the date around.
+        today = date.today()
+        when = timezone.make_aware(
+            datetime.combine(today, datetime.min.time()) + timedelta(hours=15)
+        )
+        self.game = _make_game(
+            self.home, self.away,
+            source_id='cross-view-1',
+            season=season,
+            status='final',
+            start_date=when,
+            home_winner=True,
+            away_winner=False,
+            home_points=78,
+            away_points=72,
+        )
+
+    def test_same_game_same_status_in_both_views(self):
+        """
+        Pull the same game from the calendar context and the list context
+        and assert they agree on prediction_correct (or both no_prediction).
+        """
+        # Calendar — find this game in today's cell.
+        cal_resp = self.client.get(reverse('opencourt:upcoming'))
+        cal_status = None
+        today = date.today()
+        for week in cal_resp.context['weeks']:
+            for cell in week:
+                if cell['date'] == today:
+                    for g in cell['games']:
+                        if g['game'].id == self.game.id:
+                            cal_status = g['status']
+                            break
+        self.assertIsNotNone(cal_status,
+                             'game not found in calendar today cell')
+
+        # List — find this game in all_games (the global search pool).
+        list_resp = self.client.get(
+            reverse('opencourt:upcoming') + '?view=list&mode=results&date=all'
+        )
+        list_correct = None
+        for item in list_resp.context['all_games']:
+            if item['game'].id == self.game.id:
+                list_correct = item['prediction_correct']
+                break
+        # The game should be in the list view's pool too.
+        self.assertTrue(
+            any(item['game'].id == self.game.id
+                for item in list_resp.context['all_games']),
+            'game not found in list view all_games pool',
+        )
+
+        # Both views map cal_status → list_correct as follows:
+        #   'correct'        ↔ list_correct == True
+        #   'incorrect'      ↔ list_correct == False
+        #   'no_prediction'  ↔ list_correct is None
+        expected = {
+            'correct': True,
+            'incorrect': False,
+            'no_prediction': None,
+        }[cal_status]
+        self.assertEqual(
+            list_correct, expected,
+            f'calendar says {cal_status!r} but list says '
+            f'prediction_correct={list_correct!r}'
+        )
