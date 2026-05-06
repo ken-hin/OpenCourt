@@ -1,5 +1,33 @@
+{# head_head.html — head-to-head card grid for the Predictions page. #}
 {% extends 'base.html' %}
 {% load static %}
+{% comment %}
+
+About: Rendered by UpcomingView when ?view=list. The sister template predictions_calendar.html
+renders the same /upcoming/ URL when ?view=calendar. Both templates share a Calendar/List toggle
+in the header so the user can flip between them, and a season-accuracy banner.
+
+Sub-modes (?mode=...):
+ • upcoming (default) — future scheduled games, date tabs for next 7 days
+ • results — completed games, date tabs for last 7 days, paginated 50/page when ?date=all
+
+Data contract (from UpcomingView._build_list_context):
+ • mode — 'upcoming' | 'results'
+ • games — visible cards (filtered by date OR current page)
+ • all_games — GLOBAL pool: every game for the current season. The search bar filters this pool.
+ • show_all — True when ?date=all
+ • selected_date — the active date (None when show_all)
+ • upcoming_dates — 7 dates rendered as the date-tab row today, tomorrow
+ • accuracy — {correct, total, pct} for the current season
+ • page_obj — paginator for results show_all
+ • view_mode — always 'list' here (used by the toggle)
+
+Card layout: each visible game card shows time/venue, both teams
+(logo + W-L), final score or VS + prediction badge, and a green/red
+accent bar for completed predictions.
+
+Search Bar: Filters the GLOBAL `all_games` pool. Empty input restores the default list.
+{% endcomment %}
 
 {% block title %}
   {% if mode == "results" %}Results{% else %}Matchups{% endif %} — OpenCourt
@@ -9,9 +37,6 @@
 <div class="mx-auto max-w-[1400px]">
 
   {# ═══════════════════════ HEADER ═══════════════════════ #}
-  {# Same flex layout as predictions_calendar.html so the title, view-toggle, #}
-  {# and trailing control (search here, accuracy banner there) line up #}
-  {# visually when the user flips between views. #}
   <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
     <div>
       <h1 class="text-3xl font-bold tracking-tight">
@@ -27,9 +52,7 @@
         {% endif %}
       </p>
     </div>
-
-    {# Calendar / List view toggle — same position and styling as the toggle #}
-    {# on predictions_calendar.html so it doesn't shift when switching views. #}
+    {# ════════════════ CALENDAR / LIST TOGGLE ════════════════ #}
     <div class="join">
       <a href="?view=calendar"
          class="btn btn-sm join-item {% if view_mode == 'calendar' %}btn-primary{% else %}btn-ghost{% endif %}">
@@ -41,7 +64,7 @@
       </a>
     </div>
 
-    {# Search #}
+    {# ══════════════════════ SEARCH BAR ══════════════════════ #}
     <div class="join w-full md:w-auto">
       <input type="search" id="team-search"
              placeholder="Search any team..."
@@ -66,7 +89,7 @@
       </a>
     </div>
 
-    {# Accuracy Banner (results mode) #}
+    {# ═════════════ ACCURACY BANNER (results mode) ═════════════ #}
     {% if mode == "results" and accuracy %}
     <div class="flex items-center gap-3 bg-base-200 rounded-box px-4 py-2">
       <div class="radial-progress text-sm
@@ -85,7 +108,7 @@
     {% endif %}
   </div>
 
-  {# ═══════════════════════ DATE TABS ═══════════════════════ #}
+  {# ═════════════════════════ DATE TABS ═════════════════════════ #}
   <div class="flex gap-2 flex-wrap mb-6" id="date-tabs">
     <a href="?view=list&mode={{ mode }}&date=all"
        class="btn btn-sm {% if show_all %}btn-primary{% else %}btn-ghost{% endif %}">
@@ -284,8 +307,6 @@
     {# ────────────────────────────── Lightweight global search card. ────────────────────────────── #}
     {# The search pool has every game for the current season — typically 5,000-7,500 cards. #}
     {# To keep the page weight reasonable we strip these down to the essentials. #}
-    {# a user needs to find a game (date, teams, W-L, score-or-VS, prediction outcome). #}
-    {# The full box score/stat compare lives on the team detail page #}
 
     {% for item in all_games %}
     <div class="search-card card bg-base-200 shadow-sm overflow-hidden"
