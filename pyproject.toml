@@ -20,12 +20,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     # Core web framework
-    "django>=6.0.2",
+    "django>=6.0.5",
     # Tailwind CSS integration — includes django-browser-reload for live CSS reloading in dev
     # After uv sync, run: python manage.py tailwind install
     "django-tailwind[reload]>=4.4.2",
     # CBB data API client
-    "cbbd>=1.23.0",
+    "cbbd==1.27.3",
     # HTTP requests library — used in opencourt/services.py for API calls
     "requests>=2.32.5",
     # URL-friendly slug generation (e.g. "Duke Blue Devils" -> "duke-blue-devils")
@@ -36,16 +36,16 @@ dependencies = [
     # Parses DATABASE_URL env var into Django's DATABASES dict
     "dj-database-url>=2.3.0",
     # PostgreSQL adapter — required for connecting to Supabase
-    "psycopg[binary]>=3.2",
+    "psycopg[binary]==3.3.4",
     # Production WSGI HTTP server (replaces Django's runserver)
-    "gunicorn>=23.0",
+    "gunicorn==26.0.0",
     "python-dotenv>=1.2.1",
     "tqdm>=4.67.3",
     "numpy>=2.4.3",
     "pandas>=3.0.1",
     "xgboost>=3.2.0",
     "joblib>=1.5.3",
-    "matplotlib>=3.10.8",
+    "matplotlib>=3.10.9",
     "ipykernel>=7.2.0",
     "scikit-learn>=1.8.0",
 ]
