@@ -1,0 +1,27 @@
+OpenCourt Stats — Project Report
+Title: OpenCourt Stats
+Team Name: OpenCourt
+Team Members: Kenneth Hinman | Alex Worthington | Jackson Murphy | Samuel Bombrys
+
+Intro:
+  OpenCourt is a free and open-source platform that provides a home for college basketball analytics. 
+The intention was to create a platform which would facilitate the presentation of advanced analytics from NCAA Division I men’s basketball 
+in an easy to use manner. This platform was inspired by our dissatisfaction with other existing sports websites which either have good analytics 
+hidden nehind paywalls, make information difficult to read or do not have all the necessary ranking data, games outcomes, and analysis in one place. 
+Therefore, we have created a full-stack web application which combines all this information about colleges basketball in to one neat interface.
+
+  Our strategy was to retrieve data using the CBBData API, store it in a structured database, visualize it using various visual aids, 
+and use a machine learning model to make predictions on games. As our work continued, we moved away from making just a stat website towards building 
+an advanced analytics website that involved chart visualizations, conference views, and other predictions. 
+In summary, our main objectives were met, and we created a working, deployed website that provides useful insights on college basketball data for our users. 
+OpenCourt is a reflection of data engineering, web development, visualization, and machine learning all rolled into one solid product.
+
+Customer Value:
+
+Tech:
+
+Team:
+
+Project Mangment:
+
+Reflection:
